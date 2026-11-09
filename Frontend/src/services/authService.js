@@ -1,67 +1,138 @@
 import api from './api';
+import tokenService from './tokenService';
 
 export const authService = {
-  // Login user
-  login: async (credentials) => {
+  /**
+   * Register a new user
+   * Sends POST to /api/auth/register
+   * @param {Object} userData - { name, email, password }
+   */
+  register: async ({ name, email, password }) => {
     try {
-      const response = await api.post('/auth/login', credentials);
-      if (response.data?.token) {
-        localStorage.setItem('nexora_token', response.data.token);
-        if (response.data.user) {
-          localStorage.setItem('nexora_user', JSON.stringify(response.data.user));
-        }
+      // Send both name and username fields so it seamlessly matches any backend schema
+      const payload = {
+        name,
+        username: name.toLowerCase().replace(/\s+/g, '_'),
+        email,
+        password,
+      };
+
+      const response = await api.post('/auth/register', payload);
+      const data = response.data;
+
+      // Extract token and user if returned on registration
+      const token = data?.token || data?.accessToken || data?.data?.token;
+      const user = data?.user || data?.data?.user || { name, email };
+
+      if (token) {
+        tokenService.setTokens({ token, user, rememberMe: true });
       }
-      return response.data;
+
+      return {
+        success: true,
+        message: data?.message || 'Registration completed successfully!',
+        user,
+        token,
+      };
     } catch (error) {
-      // If backend is not reached yet (e.g., during frontend-only development),
-      // we can throw the error for the UI to handle appropriately
-      const message =
-        error.response?.data?.message ||
-        error.message ||
-        'Unable to connect to authentication service.';
-      throw new Error(message);
+      // In development, if backend server on :5000 is not reachable yet,
+      // provide detailed diagnostic guidance
+      if (
+        error.message?.includes('Network Error') ||
+        error.code === 'ERR_NETWORK' ||
+        error.originalError?.code === 'ECONNREFUSED'
+      ) {
+        throw new Error(
+          'Backend server is not running on port 5000. Please start the backend service or verify the API endpoint.'
+        );
+      }
+      throw error;
     }
   },
 
-  // Register new user
-  register: async (userData) => {
+  /**
+   * Log in user
+   * Sends POST to /api/auth/login
+   * @param {Object} credentials - { email, password, rememberMe }
+   */
+  login: async ({ email, password, rememberMe = true }) => {
     try {
-      const response = await api.post('/auth/register', userData);
-      if (response.data?.token) {
-        localStorage.setItem('nexora_token', response.data.token);
-        if (response.data.user) {
-          localStorage.setItem('nexora_user', JSON.stringify(response.data.user));
-        }
+      const payload = {
+        email,
+        password,
+      };
+
+      const response = await api.post('/auth/login', payload);
+      const data = response.data;
+
+      // Extract JWT token and user details from common backend response structures
+      const token = data?.token || data?.accessToken || data?.data?.token;
+      const user =
+        data?.user ||
+        data?.data?.user || {
+          email,
+          name: email.split('@')[0],
+        };
+
+      if (!token) {
+        throw new Error('Authentication succeeded but no token was provided by the server.');
       }
-      return response.data;
+
+      // Store JWT securely according to user preference
+      tokenService.setTokens({ token, user, rememberMe });
+
+      return {
+        success: true,
+        message: data?.message || 'Logged in successfully!',
+        user,
+        token,
+      };
     } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        error.message ||
-        'Unable to complete registration.';
-      throw new Error(message);
+      if (
+        error.message?.includes('Network Error') ||
+        error.code === 'ERR_NETWORK' ||
+        error.originalError?.code === 'ECONNREFUSED'
+      ) {
+        throw new Error(
+          'Backend server is not running on port 5000. Please start the backend service or verify the API endpoint.'
+        );
+      }
+      throw error;
     }
   },
 
-  // Logout current user
-  logout: () => {
-    localStorage.removeItem('nexora_token');
-    localStorage.removeItem('nexora_user');
+  /**
+   * Sign out current user
+   */
+  logout: async () => {
+    try {
+      // Attempt to notify backend if a logout endpoint exists
+      await api.post('/auth/logout').catch(() => {});
+    } finally {
+      tokenService.clearTokens();
+    }
   },
 
-  // Get current stored user
+  /**
+   * Fetch current authenticated user profile
+   */
+  getProfile: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  /**
+   * Retrieve cached user
+   */
   getCurrentUser: () => {
-    const userStr = localStorage.getItem('nexora_user');
-    try {
-      return userStr ? JSON.parse(userStr) : null;
-    } catch {
-      return null;
-    }
+    return tokenService.getUser();
   },
 
-  // Check if token exists
+  /**
+   * Check if user is authenticated
+   */
   isAuthenticated: () => {
-    return Boolean(localStorage.getItem('nexora_token'));
+    return tokenService.isAuthenticated();
   },
 };
 

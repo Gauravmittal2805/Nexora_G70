@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { User, Mail, UserPlus, ArrowRight, Sparkles } from 'lucide-react';
+
+// Reusable Components
+import InputField from '../components/common/InputField';
+import PasswordField from '../components/common/PasswordField';
+import Button from '../components/common/Button';
+import Alert from '../components/common/Alert';
+import Checkbox from '../components/common/Checkbox';
+
+// Validations
 import {
-  User,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  UserPlus,
-  AlertCircle,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight,
-  Check,
-} from 'lucide-react';
+  validateName,
+  validateEmail,
+  validatePassword,
+  validateConfirmPassword,
+  validateTerms,
+} from '../utils/validation';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -27,352 +31,281 @@ const Register = () => {
     agreeTerms: false,
   });
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
   const [serverError, setServerError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
 
-  // Password strength calculation
-  const getPasswordStrength = (pass) => {
-    let score = 0;
-    if (!pass) return { score: 0, label: '', color: 'bg-slate-200' };
-    if (pass.length >= 8) score += 1;
-    if (/[A-Z]/.test(pass)) score += 1;
-    if (/[0-9]/.test(pass)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-
-    if (score <= 1) return { score, label: 'Weak', color: 'bg-rose-500', width: 'w-1/4' };
-    if (score === 2) return { score, label: 'Fair', color: 'bg-amber-500', width: 'w-2/4' };
-    if (score === 3) return { score, label: 'Good', color: 'bg-indigo-500', width: 'w-3/4' };
-    return { score, label: 'Strong', color: 'bg-emerald-500', width: 'w-full' };
-  };
-
-  const strength = getPasswordStrength(formData.password);
-
-  const validate = () => {
-    const newErrors = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Full name is required';
-    } else if (formData.name.trim().length < 2) {
-      newErrors.name = 'Name must be at least 2 characters';
+  // Field-level validation dispatcher
+  const validateField = (name, value, allValues = formData) => {
+    switch (name) {
+      case 'name':
+        return validateName(value);
+      case 'email':
+        return validateEmail(value);
+      case 'password':
+        return validatePassword(value, true);
+      case 'confirmPassword':
+        return validateConfirmPassword(value, allValues.password);
+      case 'agreeTerms':
+        return validateTerms(value);
+      default:
+        return null;
     }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email address is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Confirm your password';
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-
-    if (!formData.agreeTerms) {
-      newErrors.agreeTerms = 'You must agree to the Terms of Service';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+    const fieldValue = type === 'checkbox' ? checked : value;
 
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
+    const nextForm = {
+      ...formData,
+      [name]: fieldValue,
+    };
+    setFormData(nextForm);
+
+    if (serverError) setServerError('');
+
+    // If field or related field was touched, validate dynamically
+    if (touched[name]) {
+      const error = validateField(name, fieldValue, nextForm);
+      setErrors((prev) => ({ ...prev, [name]: error }));
     }
-    setServerError('');
+
+    // Revalidate confirmPassword if password changes
+    if (name === 'password' && touched.confirmPassword) {
+      const confirmError = validateConfirmPassword(nextForm.confirmPassword, fieldValue);
+      setErrors((prev) => ({ ...prev, confirmPassword: confirmError }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value, type, checked } = e.target;
+    const fieldValue = type === 'checkbox' ? checked : value;
+
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    const error = validateField(name, fieldValue, formData);
+    setErrors((prev) => ({ ...prev, [name]: error }));
+  };
+
+  // Validate entire form before submit
+  const validateForm = () => {
+    const nameError = validateName(formData.name);
+    const emailError = validateEmail(formData.email);
+    const passwordError = validatePassword(formData.password, true);
+    const confirmPasswordError = validateConfirmPassword(formData.confirmPassword, formData.password);
+    const termsError = validateTerms(formData.agreeTerms);
+
+    const newErrors = {
+      name: nameError,
+      email: emailError,
+      password: passwordError,
+      confirmPassword: confirmPasswordError,
+      agreeTerms: termsError,
+    };
+
+    setErrors(newErrors);
+    setTouched({
+      name: true,
+      email: true,
+      password: true,
+      confirmPassword: true,
+      agreeTerms: true,
+    });
+
+    return !nameError && !emailError && !passwordError && !confirmPasswordError && !termsError;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    setServerError('');
+    setSuccessMessage('');
+
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
-    setServerError('');
 
     try {
-      await register(formData.name, formData.email, formData.password);
-      setSuccessMsg('Account created successfully! Redirecting...');
+      // Connect to POST /api/auth/register via AuthContext & Axios service
+      const response = await register({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+
+      setSuccessMessage(
+        response.message || 'Account created successfully! Redirecting to dashboard...'
+      );
+
       setTimeout(() => {
         navigate('/dashboard', { replace: true });
-      }, 700);
+      }, 800);
     } catch (err) {
-      setServerError(err.message || 'Registration failed. Please try again.');
+      setServerError(
+        err.message || 'Registration failed. Please check your information and try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDemoFill = () => {
+  // Prefill demo data for rapid evaluation
+  const handlePrefillDemo = () => {
     setFormData({
       name: 'Sarah Connor',
       email: 'sarah.engineer@nexora.io',
-      password: 'NexoraSecure#2026',
-      confirmPassword: 'NexoraSecure#2026',
+      password: 'Password123#',
+      confirmPassword: 'Password123#',
       agreeTerms: true,
     });
     setErrors({});
+    setTouched({});
+    setServerError('');
   };
 
   return (
     <div className="w-full bg-white p-8 sm:p-10 rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 transition-all">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Create an account
         </h2>
-        <p className="text-sm text-slate-500 mt-2">
+        <p className="text-sm text-slate-500 mt-1.5">
           Join thousands of developers and teams building with Nexora.
         </p>
       </div>
 
       {/* Success banner */}
-      {successMsg && (
-        <div className="mb-6 flex items-center p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm">
-          <CheckCircle2 className="w-5 h-5 mr-2.5 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
-        </div>
+      {successMessage && (
+        <Alert
+          variant="success"
+          title="Account Created"
+          message={successMessage}
+          className="mb-5"
+        />
       )}
 
       {/* Server error banner */}
       {serverError && (
-        <div className="mb-6 flex items-center p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm">
-          <AlertCircle className="w-5 h-5 mr-2.5 text-rose-600 shrink-0" />
-          <span>{serverError}</span>
-        </div>
+        <Alert
+          variant="error"
+          title="Registration failed"
+          message={serverError}
+          onDismiss={() => setServerError('')}
+          className="mb-5"
+        />
       )}
 
       {/* Registration Form */}
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {/* Full Name */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-            Full Name
-          </label>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <User className="h-4 w-4" />
-            </div>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="e.g. Alex Johnson"
-              className={`block w-full pl-10 pr-3.5 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.name
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-          </div>
-          {errors.name && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.name}
-            </p>
-          )}
-        </div>
+        <InputField
+          label="Full Name"
+          name="name"
+          type="text"
+          value={formData.name}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="e.g. Alex Johnson"
+          icon={User}
+          error={touched.name ? errors.name : null}
+          autoComplete="name"
+          required
+        />
 
         {/* Email Address */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-            Email Address
-          </label>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Mail className="h-4 w-4" />
-            </div>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="you@company.com"
-              className={`block w-full pl-10 pr-3.5 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.email
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-          </div>
-          {errors.email && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.email}
-            </p>
-          )}
-        </div>
+        <InputField
+          label="Work Email"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="you@company.com"
+          icon={Mail}
+          error={touched.email ? errors.email : null}
+          autoComplete="email"
+          required
+        />
 
         {/* Password */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-            Password
-          </label>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Lock className="h-4 w-4" />
-            </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="At least 8 characters"
-              className={`block w-full pl-10 pr-10 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.password
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
-              aria-label="Toggle password visibility"
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-
-          {/* Dynamic password strength meter */}
-          {formData.password && (
-            <div className="mt-2">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-500">Strength:</span>
-                <span className="font-semibold text-slate-700">{strength.label}</span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-300 ${strength.color} ${strength.width}`}
-                />
-              </div>
-            </div>
-          )}
-
-          {errors.password && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.password}
-            </p>
-          )}
-        </div>
+        <PasswordField
+          label="Password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="At least 8 characters"
+          error={touched.password ? errors.password : null}
+          showStrengthMeter={true}
+          autoComplete="new-password"
+          required
+        />
 
         {/* Confirm Password */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-            Confirm Password
-          </label>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Lock className="h-4 w-4" />
-            </div>
-            <input
-              type={showConfirmPassword ? 'text' : 'password'}
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              placeholder="Re-enter your password"
-              className={`block w-full pl-10 pr-10 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.confirmPassword
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
-              aria-label="Toggle confirm password visibility"
-            >
-              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {errors.confirmPassword && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.confirmPassword}
-            </p>
-          )}
-        </div>
+        <PasswordField
+          label="Confirm Password"
+          name="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="Re-enter your password"
+          error={touched.confirmPassword ? errors.confirmPassword : null}
+          autoComplete="new-password"
+          required
+        />
 
-        {/* Terms agreement */}
+        {/* Terms Agreement */}
         <div className="pt-1">
-          <div className="flex items-start">
-            <input
-              id="agreeTerms"
-              name="agreeTerms"
-              type="checkbox"
-              checked={formData.agreeTerms}
-              onChange={handleChange}
-              className="h-4 w-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-            />
-            <label htmlFor="agreeTerms" className="ml-2.5 block text-xs text-slate-600 leading-normal cursor-pointer">
-              I agree to the{' '}
-              <a href="#" className="font-semibold text-indigo-600 hover:underline">
-                Terms of Service
-              </a>{' '}
-              and{' '}
-              <a href="#" className="font-semibold text-indigo-600 hover:underline">
-                Privacy Policy
-              </a>.
-            </label>
-          </div>
-          {errors.agreeTerms && (
-            <p className="mt-1 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.agreeTerms}
-            </p>
-          )}
+          <Checkbox
+            id="agreeTerms"
+            name="agreeTerms"
+            checked={formData.agreeTerms}
+            onChange={handleChange}
+            error={touched.agreeTerms ? errors.agreeTerms : null}
+          >
+            I agree to the{' '}
+            <a href="#" className="font-semibold text-indigo-600 hover:underline">
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a href="#" className="font-semibold text-indigo-600 hover:underline">
+              Privacy Policy
+            </a>
+            .
+          </Checkbox>
         </div>
 
-        {/* Submit button */}
-        <button
+        {/* Submit Button */}
+        <Button
           type="submit"
-          disabled={isSubmitting}
-          className="w-full flex items-center justify-center space-x-2 py-3 px-4 border border-transparent rounded-xl shadow-md shadow-indigo-600/20 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer mt-2"
+          variant="primary"
+          size="md"
+          fullWidth
+          isLoading={isSubmitting}
+          loadingText="Creating account..."
+          icon={UserPlus}
+          className="mt-2"
         >
-          {isSubmitting ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>Creating your account...</span>
-            </>
-          ) : (
-            <>
-              <UserPlus className="w-4 h-4" />
-              <span>Get Started Free</span>
-            </>
-          )}
-        </button>
+          Get Started Free
+        </Button>
 
-        {/* Demo fill button for testing */}
-        <button
+        {/* Demo filler for rapid testing */}
+        <Button
           type="button"
-          onClick={handleDemoFill}
-          className="w-full flex items-center justify-center space-x-1.5 py-2 px-3 rounded-lg text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 hover:text-slate-700 border border-slate-200/70 transition-colors"
+          variant="secondary"
+          size="sm"
+          fullWidth
+          onClick={handlePrefillDemo}
+          icon={Sparkles}
+          className="text-xs text-slate-500 hover:text-slate-700 border-slate-200"
         >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Fill Demo Registration</span>
-        </button>
+          Fill Demo Registration
+        </Button>
       </form>
 
-      {/* Divider */}
+      {/* Social Divider */}
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200" />
@@ -384,15 +317,12 @@ const Register = () => {
         </div>
       </div>
 
-      {/* Social options */}
+      {/* Social Buttons */}
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
-          onClick={() => {
-            register('Google User', 'google.user@nexora.io', 'GoogleAuth#2026');
-            navigate('/dashboard');
-          }}
-          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
+          onClick={handlePrefillDemo}
+          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-xs"
         >
           <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
             <path
@@ -417,11 +347,8 @@ const Register = () => {
 
         <button
           type="button"
-          onClick={() => {
-            register('GitHub User', 'github.user@nexora.io', 'GitHubAuth#2026');
-            navigate('/dashboard');
-          }}
-          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
+          onClick={handlePrefillDemo}
+          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-xs"
         >
           <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
             <path
@@ -434,7 +361,7 @@ const Register = () => {
         </button>
       </div>
 
-      {/* Footer link to login */}
+      {/* Switch to Sign In */}
       <div className="mt-8 pt-6 border-t border-slate-100 text-center">
         <p className="text-xs text-slate-500">
           Already have an account?{' '}

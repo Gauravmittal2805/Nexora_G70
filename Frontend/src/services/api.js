@@ -1,20 +1,25 @@
 import axios from 'axios';
+import tokenService from './tokenService';
 
-// Base Axios client configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Determine base API URL
+// In development, using relative '/api' leverages the Vite dev proxy to prevent CORS issues.
+// Production can point to a configured environment variable or full endpoint.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    Accept: 'application/json',
   },
-  timeout: 10000,
+  timeout: 15000,
+  withCredentials: true, // Enables sending HTTP-only cookies if backend uses cookie auth
 });
 
-// Request interceptor: automatically inject auth token if available
+// Request Interceptor: Attach JWT Bearer Token if present
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('nexora_token');
+    const token = tokenService.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -25,15 +30,33 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor: handle global response patterns or session expiration
+// Response Interceptor: Format error messages & handle 401 Unauthorized
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
+    // Session expiration / unauthorized
     if (error.response && error.response.status === 401) {
-      // Optional: Handle token expiry, auto-logout, or broadcast event
-      // localStorage.removeItem('nexora_token');
+      tokenService.clearTokens();
+      // Dispatch a custom event so React can react without a hard page reload
+      window.dispatchEvent(new CustomEvent('nexora:session-expired'));
     }
-    return Promise.reject(error);
+
+    // Extract cleanest user-facing error message
+    const customMessage =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      (error.code === 'ECONNABORTED'
+        ? 'Request timed out. Please check your network connection.'
+        : error.message || 'An unexpected error occurred.');
+
+    const enrichedError = new Error(customMessage);
+    enrichedError.status = error.response?.status;
+    enrichedError.originalError = error;
+    enrichedError.data = error.response?.data;
+
+    return Promise.reject(enrichedError);
   }
 );
 

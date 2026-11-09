@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  LogIn,
-  AlertCircle,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight,
-} from 'lucide-react';
+import { Mail, LogIn, ArrowRight, Sparkles } from 'lucide-react';
+
+// Reusable Components
+import InputField from '../components/common/InputField';
+import PasswordField from '../components/common/PasswordField';
+import Button from '../components/common/Button';
+import Alert from '../components/common/Alert';
+import Checkbox from '../components/common/Checkbox';
+
+// Validations
+import { validateEmail, validatePassword } from '../utils/validation';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -21,235 +21,232 @@ const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    rememberMe: false,
+    rememberMe: true,
   });
 
-  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
   const [serverError, setServerError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
 
   const redirectPath = location.state?.from?.pathname || '/dashboard';
 
-  const validate = () => {
-    const newErrors = {};
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email address is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+  // Field-level validation
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'email':
+        return validateEmail(value);
+      case 'password':
+        return validatePassword(value, false);
+      default:
+        return null;
     }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    const fieldValue = type === 'checkbox' ? checked : value;
+
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: fieldValue,
     }));
-    // Clear validation error when user types
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
+
+    // Clear server error as soon as user types
+    if (serverError) setServerError('');
+
+    // If field was already blurred/touched, validate live
+    if (touched[name]) {
+      const error = validateField(name, fieldValue);
+      setErrors((prev) => ({ ...prev, [name]: error }));
     }
-    setServerError('');
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    const error = validateField(name, value);
+    setErrors((prev) => ({ ...prev, [name]: error }));
+  };
+
+  // Validate entire form before submitting
+  const validateForm = () => {
+    const emailError = validateEmail(formData.email);
+    const passwordError = validatePassword(formData.password, false);
+
+    const newErrors = {
+      email: emailError,
+      password: passwordError,
+    };
+
+    setErrors(newErrors);
+    setTouched({ email: true, password: true });
+
+    return !emailError && !passwordError;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    setServerError('');
+    setSuccessMessage('');
+
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
-    setServerError('');
 
     try {
-      await login(formData.email, formData.password);
-      setSuccessMsg('Welcome back! Redirecting to your dashboard...');
+      // Connect to POST /api/auth/login via AuthContext & Axios service
+      const response = await login({
+        email: formData.email,
+        password: formData.password,
+        rememberMe: formData.rememberMe,
+      });
+
+      setSuccessMessage(
+        response.message || 'Login successful! Redirecting to your dashboard...'
+      );
+
       setTimeout(() => {
         navigate(redirectPath, { replace: true });
-      }, 700);
+      }, 800);
     } catch (err) {
-      setServerError(err.message || 'Invalid email or password');
+      setServerError(
+        err.message || 'Unable to log in. Please verify your email and password.'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Quick helper for demo/testing convenience
-  const handleDemoFill = () => {
+  // Helper to prefill demo testing credentials
+  const handlePrefillDemo = () => {
     setFormData({
       email: 'alex.developer@nexora.io',
       password: 'Password123!',
       rememberMe: true,
     });
     setErrors({});
+    setTouched({});
+    setServerError('');
   };
 
   return (
     <div className="w-full bg-white p-8 sm:p-10 rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 transition-all">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Welcome back
         </h2>
-        <p className="text-sm text-slate-500 mt-2">
+        <p className="text-sm text-slate-500 mt-1.5">
           Enter your credentials to access your Nexora workspace.
         </p>
       </div>
 
-      {/* Success banner */}
-      {successMsg && (
-        <div className="mb-6 flex items-center p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm">
-          <CheckCircle2 className="w-5 h-5 mr-2.5 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
-        </div>
+      {/* Success feedback banner */}
+      {successMessage && (
+        <Alert
+          variant="success"
+          title="Authenticated"
+          message={successMessage}
+          className="mb-5"
+        />
       )}
 
-      {/* Server error banner */}
+      {/* Error feedback banner */}
       {serverError && (
-        <div className="mb-6 flex items-center p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm">
-          <AlertCircle className="w-5 h-5 mr-2.5 text-rose-600 shrink-0" />
-          <span>{serverError}</span>
-        </div>
+        <Alert
+          variant="error"
+          title="Sign in failed"
+          message={serverError}
+          onDismiss={() => setServerError('')}
+          className="mb-5"
+        />
       )}
 
       {/* Login Form */}
-      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-        {/* Email Field */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-            Email Address
-          </label>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Mail className="h-4 w-4" />
-            </div>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="you@company.com"
-              className={`block w-full pl-10 pr-3.5 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.email
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-          </div>
-          {errors.email && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.email}
-            </p>
-          )}
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {/* Email Address */}
+        <InputField
+          label="Email Address"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="name@company.com"
+          icon={Mail}
+          error={touched.email ? errors.email : null}
+          autoComplete="email"
+          required
+        />
 
-        {/* Password Field */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-              Password
-            </label>
+        {/* Password */}
+        <PasswordField
+          label="Password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="••••••••••••"
+          error={touched.password ? errors.password : null}
+          autoComplete="current-password"
+          required
+          headerAction={
             <a
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                alert('Password reset link has been dispatched to your email (demo).');
+                alert('A password reset link will be sent to your email.');
               }}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition-colors"
             >
               Forgot password?
             </a>
-          </div>
-          <div className="relative rounded-xl shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Lock className="h-4 w-4" />
-            </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••••••"
-              className={`block w-full pl-10 pr-10 py-2.5 sm:text-sm rounded-xl border transition-colors focus:outline-none focus:ring-2 ${
-                errors.password
-                  ? 'border-rose-300 text-rose-900 placeholder-rose-300 focus:ring-rose-500/20 focus:border-rose-500 bg-rose-50/20'
-                  : 'border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
-              aria-label="Toggle password visibility"
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {errors.password && (
-            <p className="mt-1.5 text-xs text-rose-600 flex items-center">
-              <AlertCircle className="w-3 h-3 mr-1 inline" />
-              {errors.password}
-            </p>
-          )}
-        </div>
+          }
+        />
 
         {/* Remember Me */}
-        <div className="flex items-center">
-          <input
+        <div className="pt-1">
+          <Checkbox
             id="rememberMe"
             name="rememberMe"
-            type="checkbox"
             checked={formData.rememberMe}
             onChange={handleChange}
-            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            label="Remember me on this browser"
           />
-          <label htmlFor="rememberMe" className="ml-2.5 block text-xs font-medium text-slate-600 cursor-pointer">
-            Remember me on this device
-          </label>
         </div>
 
         {/* Submit Button */}
-        <button
+        <Button
           type="submit"
-          disabled={isSubmitting}
-          className="w-full flex items-center justify-center space-x-2 py-3 px-4 border border-transparent rounded-xl shadow-md shadow-indigo-600/20 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          variant="primary"
+          size="md"
+          fullWidth
+          isLoading={isSubmitting}
+          loadingText="Authenticating..."
+          icon={LogIn}
+          className="mt-2"
         >
-          {isSubmitting ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>Authenticating...</span>
-            </>
-          ) : (
-            <>
-              <LogIn className="w-4 h-4" />
-              <span>Sign in to Nexora</span>
-            </>
-          )}
-        </button>
+          Sign in to Nexora
+        </Button>
 
-        {/* Demo fill button for testing */}
-        <button
+        {/* Demo filler for rapid review */}
+        <Button
           type="button"
-          onClick={handleDemoFill}
-          className="w-full flex items-center justify-center space-x-1.5 py-2 px-3 rounded-lg text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 hover:text-slate-700 border border-slate-200/70 transition-colors"
+          variant="secondary"
+          size="sm"
+          fullWidth
+          onClick={handlePrefillDemo}
+          icon={Sparkles}
+          className="text-xs text-slate-500 hover:text-slate-700 border-slate-200"
         >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Fill Demo Credentials</span>
-        </button>
+          Fill Demo Credentials
+        </Button>
       </form>
 
-      {/* Divider */}
-      <div className="relative my-7">
+      {/* Social Divider */}
+      <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200" />
         </div>
@@ -260,15 +257,14 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Social login buttons */}
+      {/* Social Buttons */}
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
           onClick={() => {
-            login('google.user@nexora.io', 'GoogleAuth#2026');
-            navigate(redirectPath);
+            handlePrefillDemo();
           }}
-          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
+          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-xs"
         >
           <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
             <path
@@ -294,10 +290,9 @@ const Login = () => {
         <button
           type="button"
           onClick={() => {
-            login('github.user@nexora.io', 'GitHubAuth#2026');
-            navigate(redirectPath);
+            handlePrefillDemo();
           }}
-          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
+          className="flex items-center justify-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-xs"
         >
           <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
             <path
@@ -310,7 +305,7 @@ const Login = () => {
         </button>
       </div>
 
-      {/* Footer link to register */}
+      {/* Switch to Register */}
       <div className="mt-8 pt-6 border-t border-slate-100 text-center">
         <p className="text-xs text-slate-500">
           Don't have an account yet?{' '}

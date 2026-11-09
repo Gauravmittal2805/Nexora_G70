@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import authService from '../services/authService';
+import tokenService from '../services/tokenService';
 
 const AuthContext = createContext(null);
 
@@ -8,93 +9,75 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize auth state from localStorage on startup
+  // Initialize auth state on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem('nexora_token');
-    const savedUser = authService.getCurrentUser();
+    const initializeAuth = () => {
+      const activeToken = tokenService.getToken();
+      const activeUser = tokenService.getUser();
 
-    if (savedToken) {
-      setToken(savedToken);
-      setUser(savedUser || { email: 'user@nexora.com', name: 'Nexora User' });
-    }
-    setLoading(false);
+      if (activeToken && tokenService.isAuthenticated()) {
+        setToken(activeToken);
+        setUser(activeUser || { email: 'user@nexora.com', name: 'Nexora User' });
+      } else {
+        tokenService.clearTokens();
+        setToken(null);
+        setUser(null);
+      }
+      setLoading(false);
+    };
+
+    initializeAuth();
+
+    // Listen to session expiry events dispatched by Axios interceptor
+    const handleSessionExpired = () => {
+      setToken(null);
+      setUser(null);
+    };
+
+    window.addEventListener('nexora:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('nexora:session-expired', handleSessionExpired);
+    };
   }, []);
 
-  // Login handler
-  const login = async (email, password) => {
-    setLoading(true);
-    try {
-      // In early frontend setup when backend may not be running yet,
-      // allow fallback demo authentication if network fails, or real API call
-      try {
-        const data = await authService.login({ email, password });
-        setUser(data.user || { email, name: email.split('@')[0] });
-        setToken(data.token || 'demo-token');
-        return { success: true };
-      } catch (err) {
-        // Fallback for demo testing if backend is offline:
-        if (err.message.includes('Network Error') || err.message.includes('Unable to connect')) {
-          const fallbackUser = {
-            id: 'demo-1',
-            email,
-            name: email.split('@')[0] || 'Nexora User',
-          };
-          const fallbackToken = 'demo-jwt-token-nexora';
-          localStorage.setItem('nexora_token', fallbackToken);
-          localStorage.setItem('nexora_user', JSON.stringify(fallbackUser));
-          setUser(fallbackUser);
-          setToken(fallbackToken);
-          return { success: true, isDemo: true };
-        }
-        throw err;
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  /**
+   * Login handler
+   */
+  const login = useCallback(async ({ email, password, rememberMe = true }) => {
+    const result = await authService.login({ email, password, rememberMe });
+    const storedToken = tokenService.getToken();
+    const storedUser = tokenService.getUser() || result.user;
 
-  // Register handler
-  const register = async (name, email, password) => {
-    setLoading(true);
-    try {
-      try {
-        const data = await authService.register({ name, email, password });
-        setUser(data.user || { email, name });
-        setToken(data.token || 'demo-token');
-        return { success: true };
-      } catch (err) {
-        // Fallback for demo testing if backend is offline:
-        if (err.message.includes('Network Error') || err.message.includes('Unable to connect')) {
-          const fallbackUser = {
-            id: 'demo-user-' + Date.now(),
-            name,
-            email,
-          };
-          const fallbackToken = 'demo-jwt-token-nexora';
-          localStorage.setItem('nexora_token', fallbackToken);
-          localStorage.setItem('nexora_user', JSON.stringify(fallbackUser));
-          setUser(fallbackUser);
-          setToken(fallbackToken);
-          return { success: true, isDemo: true };
-        }
-        throw err;
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+    setToken(storedToken);
+    setUser(storedUser);
+    return result;
+  }, []);
 
-  // Logout handler
-  const logout = () => {
-    authService.logout();
-    setUser(null);
+  /**
+   * Register handler
+   */
+  const register = useCallback(async ({ name, email, password }) => {
+    const result = await authService.register({ name, email, password });
+    if (result.token) {
+      setToken(result.token);
+      setUser(result.user);
+    }
+    return result;
+  }, []);
+
+  /**
+   * Logout handler
+   */
+  const logout = useCallback(async () => {
+    await authService.logout();
     setToken(null);
-  };
+    setUser(null);
+  }, []);
 
   const value = {
     user,
     token,
-    isAuthenticated: Boolean(token),
+    isAuthenticated: Boolean(token && tokenService.isAuthenticated()),
     loading,
     login,
     register,
