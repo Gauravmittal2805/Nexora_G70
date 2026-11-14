@@ -19,10 +19,10 @@ const DatasetsList = () => {
   const [selectedTag, setSelectedTag] = useState('ALL');
   const [previewingDataset, setPreviewingDataset] = useState(null);
 
-  const handleDelete = (id, name, e) => {
+  const handleDelete = async (id, name, e) => {
     e.stopPropagation();
     if (window.confirm(`Are you sure you want to delete dataset "${name}"?`)) {
-      const updated = datasetService.deleteDataset(id);
+      const updated = await datasetService.deleteDataset(id);
       setDatasets(updated);
       if (previewingDataset?.id === id) {
         setPreviewingDataset(null);

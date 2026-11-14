@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import datasetService, { formatBytes } from '../services/datasetService';
@@ -18,7 +18,22 @@ import {
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [datasets] = useState(() => datasetService.getDatasets());
+  const [datasets, setDatasets] = useState(() => datasetService.getDatasets());
+
+  useEffect(() => {
+    let active = true;
+    datasetService
+      .fetchDatasets()
+      .then((data) => {
+        if (active && data) {
+          setDatasets(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const totalRecords = datasets.reduce((acc, d) => acc + (d.rowCount || 0), 0);
   const totalSizeBytes = datasets.reduce((acc, d) => acc + (d.sizeBytes || 0), 0);

@@ -1,7 +1,10 @@
 /**
  * Dataset Service for Nexora
- * Handles client-side storage, sample datasets, CSV parsing, and type inference.
+ * Handles client-side storage, sample datasets, CSV/JSON parsing, type inference,
+ * and Axios FormData communication with the Backend API.
  */
+
+import api from './api';
 
 // Initial preloaded datasets so user can test UI immediately
 const INITIAL_DATASETS = [
@@ -206,6 +209,81 @@ export function formatBytes(bytes, decimals = 1) {
 
 export const datasetService = {
   /**
+   * Upload dataset to Backend API using Axios and FormData
+   * Supports real-time onUploadProgress tracking
+   */
+  uploadToBackend: async ({ file, metadata = {}, onUploadProgress }) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (metadata.name) formData.append('name', metadata.name);
+    if (metadata.description) formData.append('description', metadata.description);
+    if (metadata.format) formData.append('format', metadata.format);
+    if (metadata.delimiter) formData.append('delimiter', metadata.delimiter);
+    if (metadata.tags) formData.append('tags', JSON.stringify(metadata.tags));
+    if (metadata.hasHeaders !== undefined) formData.append('hasHeaders', String(metadata.hasHeaders));
+
+    try {
+      const response = await api.post('/datasets/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total && onUploadProgress) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onUploadProgress(percent);
+          }
+        },
+      });
+
+      const serverDataset = response.data?.dataset;
+      if (serverDataset) {
+        // Cache in catalog
+        datasetService.saveDataset(serverDataset);
+      }
+
+      return {
+        success: true,
+        source: 'backend',
+        message: response.data?.message || 'Dataset uploaded successfully to Nexora Backend!',
+        dataset: serverDataset,
+      };
+    } catch (error) {
+      // Diagnostic check for network/backend offline
+      const isConnectionRefused =
+        error.message?.includes('Network Error') ||
+        error.code === 'ERR_NETWORK' ||
+        error.originalError?.code === 'ECONNREFUSED' ||
+        error.status === 404;
+
+      if (isConnectionRefused) {
+        const enriched = new Error(
+          'Backend server is not reachable on port 5000. Saved to local storage catalog.'
+        );
+        enriched.isOffline = true;
+        enriched.originalError = error;
+        throw enriched;
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch datasets from backend API (with fallback to local storage)
+   */
+  fetchDatasets: async () => {
+    try {
+      const res = await api.get('/datasets');
+      if (res.data && Array.isArray(res.data.datasets)) {
+        return res.data.datasets;
+      }
+      return datasetService.getDatasets();
+    } catch {
+      return datasetService.getDatasets();
+    }
+  },
+
+  /**
    * Get all datasets from storage (with defaults fallback)
    */
   getDatasets: () => {
@@ -234,7 +312,7 @@ export const datasetService = {
   },
 
   /**
-   * Add a new dataset
+   * Add a new dataset locally
    */
   saveDataset: (dataset) => {
     const datasets = datasetService.getDatasets();
@@ -244,7 +322,9 @@ export const datasetService = {
       uploadedAt: dataset.uploadedAt || new Date().toISOString(),
       status: dataset.status || 'Ready',
     };
-    const updated = [newEntry, ...datasets];
+    // Prevent duplicate entries by id
+    const filtered = datasets.filter((d) => d.id !== newEntry.id);
+    const updated = [newEntry, ...filtered];
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
@@ -254,9 +334,14 @@ export const datasetService = {
   },
 
   /**
-   * Delete dataset by ID
+   * Delete dataset by ID (calls backend + removes from storage)
    */
-  deleteDataset: (id) => {
+  deleteDataset: async (id) => {
+    try {
+      await api.delete(`/datasets/${id}`);
+    } catch {
+      // Backend may be offline, continue removing from local storage
+    }
     const datasets = datasetService.getDatasets();
     const updated = datasets.filter((d) => d.id !== id);
     try {
