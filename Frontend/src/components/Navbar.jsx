@@ -41,15 +41,25 @@ const Navbar = () => {
               Home
             </Link>
             {isAuthenticated && (
-              <Link
-                to="/dashboard"
-                className={`text-sm font-medium flex items-center space-x-1.5 transition-colors ${
-                  isActive('/dashboard') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span>Dashboard</span>
-              </Link>
+              <>
+                <Link
+                  to="/dashboard"
+                  className={`text-sm font-medium flex items-center space-x-1.5 transition-colors ${
+                    isActive('/dashboard') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </Link>
+                <Link
+                  to="/dashboard/datasets"
+                  className={`text-sm font-medium flex items-center space-x-1.5 transition-colors ${
+                    location.pathname.startsWith('/dashboard/datasets') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Datasets</span>
+                </Link>
+              </>
             )}
           </div>
 
@@ -115,13 +125,22 @@ const Navbar = () => {
             Home
           </Link>
           {isAuthenticated && (
-            <Link
-              to="/dashboard"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
-            >
-              Dashboard
-            </Link>
+            <>
+              <Link
+                to="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/dashboard/datasets"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Datasets
+              </Link>
+            </>
           )}
           <div className="pt-2 border-t border-slate-200">
             {isAuthenticated ? (

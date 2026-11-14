@@ -5,13 +5,19 @@ import { AuthProvider } from './context/AuthContext';
 // Layouts
 import MainLayout from './layouts/MainLayout';
 import AuthLayout from './layouts/AuthLayout';
+import DashboardLayout from './layouts/DashboardLayout';
 
-// Pages
+// Public & Auth Pages
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
 import NotFound from './pages/NotFound';
+
+// Dashboard & Dataset Pages
+import Dashboard from './pages/Dashboard';
+import DatasetsList from './pages/DatasetsList';
+import DatasetUpload from './pages/DatasetUpload';
+import Pipelines from './pages/Pipelines';
 
 // Protected Route Guard
 import ProtectedRoute from './components/ProtectedRoute';
@@ -21,7 +27,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Website Routes (Wrapped with MainLayout) */}
+          {/* Public Website Routes */}
           <Route
             path="/"
             element={
@@ -31,7 +37,7 @@ function App() {
             }
           />
 
-          {/* Authentication Routes (Wrapped with AuthLayout) */}
+          {/* Authentication Routes */}
           <Route
             path="/login"
             element={
@@ -49,16 +55,30 @@ function App() {
             }
           />
 
-          {/* Protected Application Routes */}
+          {/* Protected Application & Dashboard Routes with Sidebar Navigation */}
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <MainLayout>
-                  <Dashboard />
-                </MainLayout>
+                <DashboardLayout />
               </ProtectedRoute>
             }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="datasets" element={<DatasetsList />} />
+            <Route path="datasets/upload" element={<DatasetUpload />} />
+            <Route path="pipelines" element={<Pipelines />} />
+            <Route path="features" element={<Pipelines />} />
+            <Route path="models" element={<Pipelines />} />
+            <Route path="analytics" element={<Pipelines />} />
+            <Route path="settings" element={<Pipelines />} />
+          </Route>
+
+          {/* Legacy route redirects */}
+          <Route path="/datasets" element={<Navigate to="/dashboard/datasets" replace />} />
+          <Route
+            path="/datasets/upload"
+            element={<Navigate to="/dashboard/datasets/upload" replace />}
           />
 
           {/* Catch-all 404 Route */}
