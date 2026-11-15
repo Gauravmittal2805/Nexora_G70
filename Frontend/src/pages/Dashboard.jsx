@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getFirstName } from '../utils/userUtils';
 import datasetService, { formatBytes } from '../services/datasetService';
 import {
   UploadCloud,
@@ -22,6 +23,7 @@ import {
   Clock,
   Eye,
   Check,
+  TrendingUp,
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -71,7 +73,6 @@ const Dashboard = () => {
       desc: 'Multipart chunked streaming supporting CSV, JSON, and TSV with automated type inference.',
       actionLabel: 'Upload Dataset',
       actionPath: '/dashboard/datasets/upload',
-      color: 'from-blue-600 to-indigo-600',
     },
     {
       id: 2,
@@ -82,7 +83,6 @@ const Dashboard = () => {
       desc: 'Deep inspection of tabular columns, missing value counts, and categorical distributions.',
       actionLabel: 'View Datasets',
       actionPath: '/dashboard/datasets',
-      color: 'from-indigo-600 to-purple-600',
     },
     {
       id: 3,
@@ -93,7 +93,6 @@ const Dashboard = () => {
       desc: 'Mean/median strategies for missing values, duplicate removal, and outlier detection.',
       actionLabel: 'Open Pipeline',
       actionPath: '/dashboard/pipelines',
-      color: 'from-purple-600 to-pink-600',
     },
     {
       id: 4,
@@ -104,7 +103,6 @@ const Dashboard = () => {
       desc: 'StandardScaler, MinMax, One-Hot categorical transformations with automated target mapping.',
       actionLabel: 'Feature Engineering',
       actionPath: '/dashboard/pipelines',
-      color: 'from-pink-600 to-rose-600',
     },
     {
       id: 5,
@@ -115,7 +113,6 @@ const Dashboard = () => {
       desc: 'Train classification and regression models with confusion matrix and ROC-AUC metrics.',
       actionLabel: 'Model Studio',
       actionPath: '/dashboard/models',
-      color: 'from-emerald-600 to-teal-600',
     },
   ];
 
@@ -135,27 +132,29 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="space-y-8 pb-10 animate-fade-in">
-      {/* Interactive Top Welcome Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-8 sm:p-10 text-white shadow-xl border border-indigo-950/60">
-        {/* Ambient Decorative Glows */}
-        <div className="absolute -right-12 -bottom-12 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-12 -top-12 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+    <div className="space-y-8 pb-12 animate-fade-in text-slate-100">
+      {/* ========================================================= */}
+      {/* TOP WELCOME HERO BANNER (Nexux Cosmic Gradient Style) */}
+      {/* ========================================================= */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#0d1430] via-[#091026] to-[#14123b] p-8 sm:p-10 border border-cyan-500/25 shadow-2xl">
+        {/* Swirling electric ribbon glows */}
+        <div className="absolute -right-16 -bottom-16 w-96 h-96 bg-cyan-500/15 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -left-16 -top-16 w-80 h-80 bg-purple-500/15 rounded-full blur-[90px] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2.5 max-w-2xl">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold backdrop-blur-sm border border-white/15">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 text-cyan-300 text-xs font-semibold border border-cyan-500/30 backdrop-blur-md">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
               <span>Nexora Workspace Active • Real-Time Pipeline Engine</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
               Welcome back,{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300">
-                {user?.name || 'Developer'}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-300 to-purple-400 drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+                {getFirstName(user)}
               </span>
               ! 👋
             </h1>
-            <p className="text-indigo-200/90 text-sm sm:text-base leading-relaxed">
+            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
               Your high-throughput dataset platform is operational. Ingest tabular data, inspect inferred schemas, and initiate machine learning preprocessing pipelines.
             </p>
           </div>
@@ -164,139 +163,314 @@ const Dashboard = () => {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               to="/dashboard/datasets/upload"
-              className="inline-flex items-center space-x-2 px-5 py-3 rounded-xl bg-white text-indigo-950 font-bold text-xs shadow-lg hover:bg-indigo-50 hover:scale-102 transition-all cursor-pointer"
+              className="inline-flex items-center space-x-2 px-5 py-3 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer"
             >
-              <UploadCloud className="w-4 h-4 text-indigo-600" />
+              <UploadCloud className="w-4 h-4" />
               <span>Upload New Dataset</span>
             </Link>
             <Link
               to="/dashboard/pipelines"
-              className="inline-flex items-center space-x-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs backdrop-blur-sm border border-white/10 transition-all cursor-pointer"
+              className="inline-flex items-center space-x-2 px-4 py-3 rounded-full bg-[#0d1636] hover:bg-[#121e4a] text-slate-200 font-semibold text-xs border border-cyan-500/30 transition-all cursor-pointer"
             >
-              <GitBranch className="w-4 h-4 text-purple-300" />
+              <GitBranch className="w-4 h-4 text-purple-400" />
               <span>Launch Pipeline</span>
             </Link>
             <Link
               to="/dashboard/datasets"
-              className="inline-flex items-center space-x-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs backdrop-blur-sm border border-white/10 transition-all cursor-pointer"
+              className="inline-flex items-center space-x-2 px-4 py-3 rounded-full bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs border border-slate-700 transition-all cursor-pointer"
             >
-              <Database className="w-4 h-4 text-indigo-300" />
+              <Database className="w-4 h-4 text-cyan-400" />
               <span>Catalog</span>
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Interactive Diagnostic Feedback Banner */}
+      {/* Interactive Notice Banner */}
       {interactiveNotice && (
-        <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs sm:text-sm flex items-center justify-between shadow-xs animate-fade-in">
+        <div className="p-4 rounded-2xl bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 text-xs sm:text-sm flex items-center justify-between shadow-lg animate-fade-in backdrop-blur-md">
           <div className="flex items-center space-x-2.5">
-            <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
             <span className="font-medium">{interactiveNotice}</span>
           </div>
           <button
             onClick={() => setInteractiveNotice(null)}
-            className="text-indigo-500 hover:text-indigo-800 font-bold text-xs"
+            className="text-cyan-400 hover:text-white font-bold text-xs"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* KPI Stats Grid */}
+      {/* ========================================================= */}
+      {/* 4 TOP KPI STATS (Nexux Dark Style with Glowing Accents) */}
+      {/* ========================================================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Ingested Datasets */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all group">
+        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-cyan-500/40 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Ingested Datasets
             </span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Database className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+          <div className="text-2xl sm:text-3xl font-black text-white">
             {datasets.length}
           </div>
-          <div className="flex items-center text-xs text-emerald-600 mt-2 font-medium">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+          <div className="flex items-center text-xs text-cyan-400 mt-2 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-cyan-400" />
             <span>Ready for Preprocessing</span>
           </div>
         </div>
 
         {/* Total Records */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all group">
+        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-blue-500/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Total Records Indexed
             </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-blue-950/80 border border-blue-500/30 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Activity className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+          <div className="text-2xl sm:text-3xl font-black text-white">
             {totalRecords.toLocaleString()}
           </div>
-          <div className="flex items-center text-xs text-slate-500 mt-2 font-medium">
+          <div className="flex items-center text-xs text-slate-400 mt-2 font-medium">
             <span>Across all tabular streams</span>
           </div>
         </div>
 
         {/* Storage Size */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:border-purple-300 hover:shadow-md transition-all group">
+        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-purple-500/40 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Storage Footprint
             </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-purple-950/80 border border-purple-500/30 text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <HardDrive className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+          <div className="text-2xl sm:text-3xl font-black text-white">
             {formatBytes(totalSizeBytes)}
           </div>
-          <div className="flex items-center text-xs text-purple-600 mt-2 font-medium">
+          <div className="flex items-center text-xs text-purple-400 mt-2 font-medium">
             <span>High-speed cached memory</span>
           </div>
         </div>
 
         {/* Model Accuracy Benchmark */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:border-pink-300 hover:shadow-md transition-all group">
+        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-pink-500/40 hover:shadow-[0_0_20px_rgba(236,72,153,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Model Health Score
             </span>
-            <div className="w-9 h-9 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-pink-950/80 border border-pink-500/30 text-pink-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Cpu className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">98.9%</div>
-          <div className="flex items-center text-xs text-indigo-600 mt-2 font-medium">
+          <div className="text-2xl sm:text-3xl font-black text-white">98.9%</div>
+          <div className="flex items-center text-xs text-pink-400 mt-2 font-medium">
             <Sparkles className="w-3.5 h-3.5 mr-1" />
             <span>Optimal Baseline</span>
           </div>
         </div>
       </div>
 
-      {/* Interactive ML Workflow Studio Pipeline Track */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs">
+      {/* ========================================================= */}
+      {/* NEXUX DASHBOARD WIDGETS (Radial Gauges & Stream Wave Chart) */}
+      {/* Inspired directly by the bottom-right image preview */}
+      {/* ========================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Left: Interactive Stream Wave Chart (lg:col-span-8) */}
+        <div className="lg:col-span-8 bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-6 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  Ingestion Stream & Memory Analysis
+                </h3>
+                <span className="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">
+                  Live Stream
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Real-time chunked ingestion throughput and RAM buffer allocation.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 text-xs">
+              <span className="flex items-center text-cyan-400 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 mr-1.5" />
+                Throughput (MB/s)
+              </span>
+              <span className="flex items-center text-purple-400 font-semibold ml-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 mr-1.5" />
+                CPU Core Load
+              </span>
+            </div>
+          </div>
+
+          {/* SVG Wave Chart matching Nexux theme */}
+          <div className="h-56 w-full relative">
+            <svg className="w-full h-full overflow-visible" viewBox="0 0 500 160" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="cyanWaveGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
+                  <stop offset="60%" stopColor="#3b82f6" stopOpacity="0.15" />
+                  <stop offset="100%" stopColor="#060813" stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="purpleWaveGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#a855f7" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#060813" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              {/* Grid guide lines */}
+              <line x1="0" y1="40" x2="500" y2="40" stroke="#1e293b" strokeDasharray="3 3" />
+              <line x1="0" y1="80" x2="500" y2="80" stroke="#1e293b" strokeDasharray="3 3" />
+              <line x1="0" y1="120" x2="500" y2="120" stroke="#1e293b" strokeDasharray="3 3" />
+
+              {/* Secondary wave path (purple) */}
+              <path
+                d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75 L500,160 L0,160 Z"
+                fill="url(#purpleWaveGrad)"
+              />
+              <path
+                d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75"
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth="2"
+              />
+
+              {/* Primary wave path (cyan) */}
+              <path
+                d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25 L500,160 L0,160 Z"
+                fill="url(#cyanWaveGrad)"
+              />
+              <path
+                d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25"
+                fill="none"
+                stroke="#00d2ff"
+                strokeWidth="2.5"
+                filter="drop-shadow(0 0 6px rgba(0,210,255,0.6))"
+              />
+
+              {/* Active Pulsing Point */}
+              <circle cx="240" cy="40" r="4" fill="#00d2ff" className="animate-ping" />
+              <circle cx="240" cy="40" r="3" fill="#ffffff" />
+            </svg>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono mt-2 pt-2 border-t border-slate-800">
+            <span>00:00 (Buffer Init)</span>
+            <span>06:00 (Ingestion Peak)</span>
+            <span>12:00 (Preprocessing)</span>
+            <span>18:00 (Model Baseline)</span>
+            <span>24:00 (Cached)</span>
+          </div>
+        </div>
+
+        {/* Right: Circular / Radial Gauges (lg:col-span-4) matching Nexux preview */}
+        <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+          {/* Gauge 1: Satisfaction Rate (96%) */}
+          <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-5 shadow-xl flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Satisfaction Rate
+              </span>
+              <div className="text-xl font-extrabold text-white mt-1">96%</div>
+              <p className="text-[11px] text-cyan-400 mt-0.5 flex items-center">
+                <TrendingUp className="w-3 h-3 mr-1" /> Optimal Pipeline
+              </p>
+            </div>
+
+            {/* Circular Gauge SVG */}
+            <div className="relative w-16 h-16 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-slate-800"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-cyan-400"
+                  strokeDasharray="96, 100"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  filter="drop-shadow(0 0 4px rgba(6,182,212,0.8))"
+                />
+              </svg>
+              <span className="absolute font-bold text-xs text-white">96%</span>
+            </div>
+          </div>
+
+          {/* Gauge 2: General Scoring (9.3) */}
+          <div className="bg-[#0a0f24] rounded-3xl border border-purple-500/20 p-5 shadow-xl flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                General Scoring
+              </span>
+              <div className="text-xl font-extrabold text-white mt-1">9.3 / 10</div>
+              <p className="text-[11px] text-purple-400 mt-0.5 flex items-center">
+                <Sparkles className="w-3 h-3 mr-1" /> Model Evaluation
+              </p>
+            </div>
+
+            {/* Circular Gauge SVG */}
+            <div className="relative w-16 h-16 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-slate-800"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-purple-400"
+                  strokeDasharray="93, 100"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  filter="drop-shadow(0 0 4px rgba(168,85,247,0.8))"
+                />
+              </svg>
+              <span className="absolute font-bold text-xs text-white">9.3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* INTERACTIVE ML WORKFLOW PIPELINE TRACK */}
+      {/* ========================================================= */}
+      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-6 sm:p-8 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <div className="flex items-center space-x-2">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900">
+              <h3 className="text-base sm:text-lg font-bold text-white">
                 Interactive ML Pipeline Workflow
               </h3>
-              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-500/40 px-2 py-0.5 rounded-full">
                 Click any step to inspect
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5">
               Continuous end-to-end lifecycle from raw dataset upload to trained machine learning models.
             </p>
           </div>
           <Link
             to="/dashboard/pipelines"
-            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center space-x-1"
+            className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 flex items-center space-x-1"
           >
             <span>Open Full Pipeline Studio</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -314,34 +488,34 @@ const Dashboard = () => {
                 onClick={() => setActiveWorkflowStep(item.id)}
                 className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-gradient-to-b from-indigo-50/80 to-purple-50/40 border-indigo-500 ring-2 ring-indigo-500/20 shadow-md scale-102'
-                    : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200/80'
+                    ? 'bg-[#0e163b] border-cyan-400 ring-2 ring-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.25)] scale-102'
+                    : 'bg-[#070b1c] hover:bg-[#0c122e] border-slate-800'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[11px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>
+                  <span className={`text-[11px] font-mono font-bold ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`}>
                     Step {item.step}
                   </span>
                   <span
                     className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                      isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                      isSelected ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
                     }`}
                   >
                     {item.status}
                   </span>
                 </div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">{item.title}</div>
-                <p className="text-[11px] text-slate-500 mt-1 leading-snug">{item.subtitle}</p>
+                <div className="text-xs font-bold text-white leading-tight">{item.title}</div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-snug">{item.subtitle}</p>
               </button>
             );
           })}
         </div>
 
-        {/* Active Step Interactive Detail Card */}
-        <div className="mt-5 p-5 rounded-2xl bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Active Step Detail Card */}
+        <div className="mt-5 p-5 rounded-2xl bg-[#050814] text-white flex flex-col md:flex-row md:items-center justify-between gap-4 border border-cyan-500/20">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-indigo-300 text-xs font-semibold">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <div className="flex items-center space-x-2 text-cyan-300 text-xs font-semibold">
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
               <span>Step {currentStep.step}: {currentStep.title}</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
@@ -350,84 +524,88 @@ const Dashboard = () => {
           </div>
           <Link
             to={currentStep.actionPath}
-            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-white text-slate-950 font-bold text-xs hover:bg-indigo-50 transition-all shrink-0 cursor-pointer"
+            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs transition-all shrink-0 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.35)]"
           >
             <span>{currentStep.actionLabel}</span>
-            <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       </div>
 
-      {/* Interactive Quick Diagnostic Playground */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-xs">
+      {/* ========================================================= */}
+      {/* QUICK DIAGNOSTIC PLAYGROUND */}
+      {/* ========================================================= */}
+      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-base font-bold text-slate-900">
+            <h3 className="text-base font-bold text-white">
               Interactive ML Health & Schema Tools
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5">
               Run instant micro-diagnostics directly on active cached memory.
             </p>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono">Real-time Node Runtime</span>
+          <span className="text-[11px] text-slate-500 font-mono">Real-time Node Runtime</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             type="button"
             onClick={() => triggerDiagnostic('nulls')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50 hover:bg-indigo-50/60 hover:border-indigo-300 transition-all text-left cursor-pointer group"
+            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-cyan-500/40 transition-all text-left cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105">
+            <div className="w-8 h-8 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
               <CheckCircle2 className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900">Check Null Values</p>
-              <p className="text-[10px] text-slate-500">Scan missing values in datasets</p>
+              <p className="text-xs font-bold text-white">Check Null Values</p>
+              <p className="text-[10px] text-slate-400">Scan missing values in datasets</p>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => triggerDiagnostic('schema')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50 hover:bg-purple-50/60 hover:border-purple-300 transition-all text-left cursor-pointer group"
+            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-purple-500/40 transition-all text-left cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105">
+            <div className="w-8 h-8 rounded-xl bg-purple-950 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
               <Database className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900">Verify Schema Types</p>
-              <p className="text-[10px] text-slate-500">Infer integers, floats & strings</p>
+              <p className="text-xs font-bold text-white">Verify Schema Types</p>
+              <p className="text-[10px] text-slate-400">Infer integers, floats & strings</p>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => triggerDiagnostic('pipeline')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50 hover:bg-emerald-50/60 hover:border-emerald-300 transition-all text-left cursor-pointer group"
+            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-emerald-500/40 transition-all text-left cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105">
+            <div className="w-8 h-8 rounded-xl bg-emerald-950 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
               <Cpu className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900">Simulate Pipeline Batch</p>
-              <p className="text-[10px] text-slate-500">Test preprocessing throughput</p>
+              <p className="text-xs font-bold text-white">Simulate Pipeline Batch</p>
+              <p className="text-[10px] text-slate-400">Test preprocessing throughput</p>
             </div>
           </button>
         </div>
       </div>
 
-      {/* Recent Datasets Table with Real-time Search & Filter */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
+      {/* ========================================================= */}
+      {/* RECENT DATASETS TABLE (Nexux Dark Style) */}
+      {/* ========================================================= */}
+      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 shadow-xl overflow-hidden">
         {/* Header & Filter Controls */}
-        <div className="p-6 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-6 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#070b1c]">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Ingested Datasets Catalog</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-base font-bold text-white">Ingested Datasets Catalog</h3>
+              <p className="text-xs text-slate-400">
                 Preview schemas, record counts, and inspect tabular structures.
               </p>
             </div>
@@ -436,17 +614,17 @@ const Dashboard = () => {
           {/* Interactive Search & Filter Options */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5 pointer-events-none" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
                 placeholder="Search datasets..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-44"
+                className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-800 bg-[#050814] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 w-44"
               />
             </div>
 
-            <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+            <div className="flex items-center space-x-1 bg-[#050814] p-1 rounded-xl text-xs font-semibold border border-slate-800">
               {['ALL', 'CSV', 'JSON'].map((fmt) => (
                 <button
                   key={fmt}
@@ -454,8 +632,8 @@ const Dashboard = () => {
                   onClick={() => setSelectedFormat(fmt)}
                   className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     selectedFormat === fmt
-                      ? 'bg-white text-indigo-600 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-600 text-white shadow-xs font-bold'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   {fmt}
@@ -465,7 +643,7 @@ const Dashboard = () => {
 
             <Link
               to="/dashboard/datasets/upload"
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
             >
               <UploadCloud className="w-3.5 h-3.5" />
               <span>Upload</span>
@@ -475,8 +653,8 @@ const Dashboard = () => {
 
         {/* Datasets Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200/80">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-[#070b1c] text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="py-3 px-6">Dataset Name</th>
                 <th className="py-3 px-6">Format</th>
@@ -487,15 +665,15 @@ const Dashboard = () => {
                 <th className="py-3 px-6 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-800/60">
               {filteredDatasets.length > 0 ? (
                 filteredDatasets.map((dataset) => (
-                  <tr key={dataset.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-4 px-6 font-semibold text-slate-900">
+                  <tr key={dataset.id} className="hover:bg-cyan-500/5 transition-colors">
+                    <td className="py-4 px-6 font-semibold text-white">
                       <div className="flex items-center space-x-2">
                         <span>{dataset.name}</span>
                         {dataset.tags && dataset.tags.length > 0 && (
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] bg-slate-800 text-cyan-300 px-2 py-0.5 rounded-md border border-slate-700">
                             {dataset.tags[0]}
                           </span>
                         )}
@@ -505,32 +683,32 @@ const Dashboard = () => {
                       </p>
                     </td>
                     <td className="py-4 px-6">
-                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
+                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-500/30">
                         {dataset.format}
                       </span>
                     </td>
-                    <td className="py-4 px-6 font-medium text-slate-900">
+                    <td className="py-4 px-6 font-medium text-white">
                       {(dataset.rowCount || 0).toLocaleString()}
                     </td>
                     <td className="py-4 px-6">
-                      <span className="font-medium text-slate-900">
+                      <span className="font-medium text-white">
                         {dataset.columnCount || dataset.columns?.length || 0}
                       </span>
-                      <span className="text-slate-400 text-[10px] ml-1">inferred</span>
+                      <span className="text-slate-500 text-[10px] ml-1">inferred</span>
                     </td>
-                    <td className="py-4 px-6 font-mono text-[11px]">
+                    <td className="py-4 px-6 font-mono text-[11px] text-slate-400">
                       {formatBytes(dataset.sizeBytes)}
                     </td>
                     <td className="py-4 px-6">
-                      <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                         <span>{dataset.status || 'Ready'}</span>
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right">
                       <Link
                         to="/dashboard/datasets"
-                        className="inline-flex items-center space-x-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                        className="inline-flex items-center space-x-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Inspect</span>
@@ -540,7 +718,7 @@ const Dashboard = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" className="py-8 text-center text-slate-400">
+                  <td colSpan="7" className="py-8 text-center text-slate-500">
                     No datasets match your search query. Try clearing the filter.
                   </td>
                 </tr>

@@ -13,7 +13,7 @@ const DashboardLayout = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-800 antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen flex bg-[#060813] text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
       {/* Sidebar Navigation */}
       <Sidebar
         isCollapsed={isCollapsed}
@@ -23,7 +23,7 @@ const DashboardLayout = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#060813]">
         {/* Top Header */}
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
 

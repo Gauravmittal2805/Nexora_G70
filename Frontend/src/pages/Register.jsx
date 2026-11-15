@@ -139,11 +139,17 @@ const Register = () => {
       });
 
       setSuccessMessage(
-        response.message || 'Account created successfully! Redirecting...'
+        response.message || 'Account created successfully! Redirecting to sign in...'
       );
 
       setTimeout(() => {
-        navigate('/dashboard', { replace: true });
+        navigate('/login', {
+          replace: true,
+          state: {
+            email: formData.email.trim(),
+            registeredSuccess: true,
+          },
+        });
       }, 700);
     } catch (err) {
       setServerError(

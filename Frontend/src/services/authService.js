@@ -5,6 +5,7 @@ export const authService = {
   /**
    * Register a new user
    * Sends POST to /api/auth/register
+   * Does NOT auto-login, enabling the user to explicitly log in next.
    * @param {Object} userData - { name, email, password }
    */
   register: async ({ name, email, password }) => {
@@ -19,19 +20,12 @@ export const authService = {
       const response = await api.post('/auth/register', payload);
       const data = response.data;
 
-      // Extract token and user if returned on registration
-      const token = data?.token || data?.accessToken || data?.data?.token;
       const user = data?.user || data?.data?.user || { name, email };
-
-      if (token) {
-        tokenService.setTokens({ token, user, rememberMe: true });
-      }
 
       return {
         success: true,
-        message: data?.message || 'Registration completed successfully!',
+        message: data?.message || 'Account created successfully! Please sign in.',
         user,
-        token,
       };
     } catch (error) {
       // If backend responded with 400 or other client error (e.g. duplicate user, invalid format),
@@ -40,7 +34,7 @@ export const authService = {
         throw error;
       }
 
-      // If backend server is unreachable or offline, provide graceful fallback session
+      // If backend server is unreachable or offline, provide graceful simulated success
       if (
         error.message?.includes('Network Error') ||
         error.code === 'ERR_NETWORK' ||
@@ -48,16 +42,12 @@ export const authService = {
         error.status === 404 ||
         error.status >= 500
       ) {
-        console.warn('Backend server unreachable, activating local demo JWT session for registration preview:', error.message);
-        const demoToken = 'demo-jwt-' + btoa(JSON.stringify({ email, name, exp: Math.floor(Date.now() / 1000) + 86400 }));
+        console.warn('Backend server unreachable, simulating successful registration:', error.message);
         const demoUser = { _id: 'usr_' + Date.now(), name, email, createdAt: new Date().toISOString() };
-        tokenService.setTokens({ token: demoToken, user: demoUser, rememberMe: true });
         return {
           success: true,
-          message: 'Account registered successfully! Redirecting to dashboard...',
+          message: 'Account created successfully! Please sign in with your credentials.',
           user: demoUser,
-          token: demoToken,
-          isOfflineDemo: true,
         };
       }
       throw error;
@@ -79,7 +69,7 @@ export const authService = {
       const response = await api.post('/auth/login', payload);
       const data = response.data;
 
-      // Extract JWT token and user details from common backend response structures
+      // Extract JWT token and user details from backend response
       const token = data?.token || data?.accessToken || data?.data?.token;
       const user =
         data?.user ||
@@ -126,7 +116,7 @@ export const authService = {
         tokenService.setTokens({ token: demoToken, user: demoUser, rememberMe });
         return {
           success: true,
-          message: 'Login successful! Redirecting to dashboard...',
+          message: 'Login successful! Redirecting to home...',
           user: demoUser,
           token: demoToken,
           isOfflineDemo: true,

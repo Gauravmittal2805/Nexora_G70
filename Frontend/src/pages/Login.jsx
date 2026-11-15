@@ -22,10 +22,16 @@ const Login = () => {
   const { login } = useAuth();
 
   const [formData, setFormData] = useState({
-    email: '',
+    email: location.state?.email || '',
     password: '',
     rememberMe: true,
   });
+
+  const [registeredNotice, setRegisteredNotice] = useState(
+    location.state?.registeredSuccess
+      ? 'Account created successfully! Please enter your password to sign in.'
+      : ''
+  );
 
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
@@ -37,7 +43,8 @@ const Login = () => {
   // Interactive showcase state for Login right panel
   const [activeTab, setActiveTab] = useState('pipelines');
 
-  const redirectPath = location.state?.from?.pathname || '/dashboard';
+  // Default redirect path is now the Landing Page ('/'), not the dashboard
+  const redirectPath = location.state?.from?.pathname || '/';
 
   const validateField = (name, value) => {
     switch (name) {
@@ -155,6 +162,17 @@ const Login = () => {
               Sign in to access your Nexora workspace
             </p>
           </div>
+
+          {/* Registration success notice */}
+          {registeredNotice && !serverError && (
+            <Alert
+              variant="success"
+              title="Account Ready"
+              message={registeredNotice}
+              onDismiss={() => setRegisteredNotice('')}
+              className="mb-2.5 text-xs py-2"
+            />
+          )}
 
           {/* Feedback Alerts */}
           {successMessage && (
