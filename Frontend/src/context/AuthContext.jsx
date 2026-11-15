@@ -54,14 +54,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * Register handler
+   * Register handler - Registers user, does not auto-login
    */
   const register = useCallback(async ({ name, email, password }) => {
     const result = await authService.register({ name, email, password });
-    if (result.token) {
-      setToken(result.token);
-      setUser(result.user);
-    }
     return result;
   }, []);
 

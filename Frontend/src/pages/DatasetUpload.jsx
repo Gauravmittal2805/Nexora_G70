@@ -131,23 +131,23 @@ const DatasetUpload = () => {
   };
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-8 pb-16 text-slate-100">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2 text-xs font-semibold text-indigo-600 mb-1">
+          <div className="flex items-center space-x-2 text-xs font-semibold text-cyan-400 mb-1">
             <Link
               to="/dashboard"
-              className="hover:underline flex items-center space-x-1 text-slate-500 hover:text-indigo-600"
+              className="hover:underline flex items-center space-x-1 text-slate-400 hover:text-cyan-400"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Dashboard</span>
             </Link>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Dataset Ingestion & Schema Inspector
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-400 mt-1">
             Upload raw CSV or JSON files, configure metadata, and transmit to the backend using Axios and FormData.
           </p>
         </div>
@@ -159,7 +159,7 @@ const DatasetUpload = () => {
               type="button"
               onClick={handleUploadToBackend}
               disabled={isUploading}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer disabled:opacity-50"
             >
               {isUploading ? (
                 <>
@@ -179,53 +179,53 @@ const DatasetUpload = () => {
 
       {/* Upload Success Alert Banner */}
       {successInfo && (
-        <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 shadow-xs animate-fade-in space-y-2">
+        <div className="p-5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 shadow-xl animate-fade-in space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-emerald-950">{successInfo.title}</h4>
-                <p className="text-xs text-emerald-700 mt-0.5">{successInfo.message}</p>
+                <h4 className="text-sm font-bold text-white">{successInfo.title}</h4>
+                <p className="text-xs text-emerald-300 mt-0.5">{successInfo.message}</p>
               </div>
             </div>
 
             <Link
               to="/dashboard/datasets"
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
             >
               <span>View in Catalog</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] font-medium text-emerald-800 border-t border-emerald-200/60">
+          <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] font-medium text-emerald-300 border-t border-emerald-500/30">
             <span className="flex items-center">
-              <Server className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-              Source: <span className="font-semibold ml-1">{successInfo.source}</span>
+              <Server className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+              Source: <span className="font-semibold ml-1 text-white">{successInfo.source}</span>
             </span>
             <span>•</span>
-            <span>ID: <code className="font-mono">{successInfo.datasetId}</code></span>
+            <span>ID: <code className="font-mono text-cyan-300">{successInfo.datasetId}</code></span>
             <span>•</span>
-            <span>Indexed: <strong className="font-semibold">{successInfo.rowCount.toLocaleString()} rows</strong></span>
+            <span>Indexed: <strong className="font-semibold text-white">{successInfo.rowCount.toLocaleString()} rows</strong></span>
           </div>
         </div>
       )}
 
       {/* Upload Error Alert Banner */}
       {errorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 shadow-xs animate-fade-in flex items-start justify-between">
+        <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/40 text-rose-300 shadow-xl animate-fade-in flex items-start justify-between">
           <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-rose-950">Upload Failed</h4>
-              <p className="text-xs text-rose-700 mt-0.5">{errorMessage}</p>
+              <h4 className="text-sm font-bold text-white">Upload Failed</h4>
+              <p className="text-xs text-rose-300 mt-0.5">{errorMessage}</p>
             </div>
           </div>
           <button
             onClick={() => setErrorMessage(null)}
-            className="text-xs font-semibold text-rose-700 hover:text-rose-900 px-2 py-1 rounded hover:bg-rose-100"
+            className="text-xs font-semibold text-rose-400 hover:text-white px-2 py-1 rounded hover:bg-rose-900/30"
           >
             Dismiss
           </button>
@@ -235,8 +235,8 @@ const DatasetUpload = () => {
       {/* Step 1: Drag & Drop File Upload */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">
+          <div className="flex items-center space-x-2 text-white font-bold text-sm">
+            <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs">
               1
             </span>
             <span>File Selection (Drag-and-Drop or CSV/JSON Button)</span>
@@ -256,8 +256,8 @@ const DatasetUpload = () => {
       {/* Step 2: Metadata & Parsing Settings */}
       {parsedData && (
         <section className="space-y-3 animate-fade-in">
-          <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">
+          <div className="flex items-center space-x-2 text-white font-bold text-sm">
+            <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs">
               2
             </span>
             <span>Metadata & Schema Configuration</span>
@@ -270,8 +270,8 @@ const DatasetUpload = () => {
       {parsedData && (
         <section className="space-y-3 animate-fade-in">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
-              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">
+            <div className="flex items-center space-x-2 text-white font-bold text-sm">
+              <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs">
                 3
               </span>
               <span>Dataset Preview & Statistical Health</span>
@@ -290,12 +290,12 @@ const DatasetUpload = () => {
 
       {/* Bottom Save & Transmission Banner */}
       {parsedData && (
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-[#0d1430] via-[#09122a] to-[#120f38] text-white shadow-2xl border border-cyan-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-lg font-bold">
+            <h3 className="text-lg font-bold text-white">
               Transmit "{metadata.name}" to Backend
             </h3>
-            <p className="text-indigo-200 text-xs max-w-xl">
+            <p className="text-slate-300 text-xs max-w-xl">
               File will be sent via multipart <code>FormData</code> to <code>/api/datasets/upload</code> with full schema inference and row caching.
             </p>
           </div>
@@ -308,7 +308,7 @@ const DatasetUpload = () => {
                 setSelectedFile(null);
                 setParsedData(null);
               }}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs backdrop-blur-sm transition-all disabled:opacity-40"
+              className="px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium text-xs backdrop-blur-sm transition-all disabled:opacity-40"
             >
               Reset
             </button>
@@ -316,17 +316,17 @@ const DatasetUpload = () => {
               type="button"
               onClick={handleUploadToBackend}
               disabled={isUploading}
-              className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all cursor-pointer disabled:opacity-50"
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                   <span>Uploading ({uploadProgress}%)...</span>
                 </>
               ) : (
                 <>
                   <span>Upload & Transmit to API</span>
-                  <ArrowRight className="w-4 h-4 text-indigo-600" />
+                  <ArrowRight className="w-4 h-4 text-white" />
                 </>
               )}
             </button>

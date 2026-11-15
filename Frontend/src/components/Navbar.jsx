@@ -1,183 +1,454 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Sparkles, LogIn, UserPlus, LogOut, LayoutDashboard, Menu, X } from 'lucide-react';
+import { getFirstName } from '../utils/userUtils';
+import {
+  Sparkles,
+  LogIn,
+  UserPlus,
+  LogOut,
+  LayoutDashboard,
+  Database,
+  UploadCloud,
+  GitBranch,
+  Cpu,
+  BarChart3,
+  Menu,
+  X,
+  Bell,
+  ChevronDown,
+  ShieldCheck,
+  CheckCircle2,
+} from 'lucide-react';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  const profileRef = useRef(null);
+  const notifRef = useRef(null);
+
+  // Detect scroll to fix and style navbar on scrolling
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 15);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Close menus on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setProfileOpen(false);
+    setNotificationsOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
+
+  const notifications = [
+    {
+      id: 1,
+      title: 'Dataset Ingestion Complete',
+      desc: 'Customer_Churn_Analysis.csv parsed with 2,500 rows.',
+      time: '10m ago',
+    },
+    {
+      id: 2,
+      title: 'Pipeline Ready',
+      desc: 'Preprocessing baseline model inference operational.',
+      time: '1h ago',
+    },
+    {
+      id: 3,
+      title: 'Security Sync',
+      desc: 'JWT session authenticated with 256-bit encryption.',
+      time: '2h ago',
+    },
+  ];
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/80 transition-all">
+    <nav
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        isScrolled
+          ? 'bg-[#060813]/95 backdrop-blur-2xl border-b border-cyan-500/30 shadow-[0_10px_35px_rgba(0,0,0,0.8)]'
+          : 'bg-[#060813]/60 backdrop-blur-md border-b border-cyan-500/10'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Brand Logo */}
-          <Link to="/" className="flex items-center space-x-2 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-200">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <span className="font-extrabold text-2xl tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-800 bg-clip-text text-transparent">
-              Nexora
-            </span>
-          </Link>
-
-          {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center space-x-8">
-            <Link
-              to="/"
-              className={`text-sm font-medium transition-colors ${
-                isActive('/') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Home
+          {/* Left: Nexux-style Brand Logo */}
+          <div className="flex items-center space-x-7">
+            <Link to="/" className="flex items-center space-x-2.5 group">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform duration-200">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex items-baseline space-x-1.5">
+                <span className="font-black text-xl tracking-tight text-white block leading-none">
+                  nexora
+                </span>
+                <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30">
+                  AI
+                </span>
+              </div>
             </Link>
-            {isAuthenticated && (
-              <>
-                <Link
-                  to="/dashboard"
-                  className={`text-sm font-medium flex items-center space-x-1.5 transition-colors ${
-                    isActive('/dashboard') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <LayoutDashboard className="w-4 h-4" />
-                  <span>Dashboard</span>
-                </Link>
-                <Link
-                  to="/dashboard/datasets"
-                  className={`text-sm font-medium flex items-center space-x-1.5 transition-colors ${
-                    location.pathname.startsWith('/dashboard/datasets') ? 'text-indigo-600 font-semibold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span>Datasets</span>
-                </Link>
-              </>
-            )}
+
+            {/* Desktop Navigation Links (Nexux Dark Aesthetic) */}
+            <div className="hidden lg:flex items-center space-x-1 pl-4 border-l border-slate-800">
+              <Link
+                to="/"
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  isActive('/') && location.pathname === '/'
+                    ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                Home
+              </Link>
+
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    to="/dashboard"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                      location.pathname === '/dashboard'
+                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Dashboard</span>
+                  </Link>
+
+                  <Link
+                    to="/dashboard/datasets"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                      location.pathname.startsWith('/dashboard/datasets')
+                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Database className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Datasets</span>
+                  </Link>
+
+                  <Link
+                    to="/dashboard/pipelines"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                      location.pathname.startsWith('/dashboard/pipelines')
+                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Pipelines</span>
+                  </Link>
+
+                  <Link
+                    to="/dashboard/models"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                      location.pathname.startsWith('/dashboard/models')
+                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Cpu className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Model Studio</span>
+                  </Link>
+
+                  <Link
+                    to="/dashboard/analytics"
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                      location.pathname.startsWith('/dashboard/analytics')
+                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Analytics</span>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="#tools"
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Tools
+                  </a>
+                  <a
+                    href="#pipeline"
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Our Services
+                  </a>
+                  <a
+                    href="#benchmarks"
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Benchmarks
+                  </a>
+                  <a
+                    href="#faq"
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    FAQ
+                  </a>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Desktop Right Side CTA / Auth */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* Right Side Options & User Actions */}
+          <div className="hidden md:flex items-center space-x-3">
             {isAuthenticated ? (
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2 text-sm text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
-                  <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs uppercase">
-                    {user?.name ? user.name[0] : 'U'}
-                  </div>
-                  <span className="font-medium text-slate-800">{user?.name || user?.email}</span>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center space-x-1.5 px-3.5 py-1.5 text-sm font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+              <>
+                {/* Glowing Quick Upload Action */}
+                <Link
+                  to="/dashboard/datasets/upload"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-[0_0_18px_rgba(6,182,212,0.35)] transition-all cursor-pointer"
                 >
-                  <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
-                </button>
-              </div>
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Upload Dataset</span>
+                </Link>
+
+                {/* Notifications Dropdown */}
+                <div className="relative" ref={notifRef}>
+                  <button
+                    onClick={() => setNotificationsOpen(!notificationsOpen)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 border border-slate-800 transition-colors relative cursor-pointer"
+                    title="Notifications"
+                    aria-label="View notifications"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cyan-400 ring-2 ring-[#060813] animate-pulse" />
+                  </button>
+
+                  {/* Dropdown Content */}
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-[#0a0f24] rounded-2xl shadow-2xl border border-cyan-500/20 py-2 z-50 animate-fade-in backdrop-blur-xl">
+                      <div className="px-4 py-2 border-b border-slate-800/80 flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">System Feed</span>
+                        <span className="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-semibold px-2 py-0.5 rounded-full">
+                          Live
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-800/60 max-h-64 overflow-y-auto">
+                        {notifications.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-3 hover:bg-white/5 transition-colors cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-xs font-semibold text-white">
+                                {item.title}
+                              </span>
+                              <span className="text-[10px] text-slate-400">{item.time}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 leading-tight">
+                              {item.desc}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* User Profile Pill Menu with First Name */}
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="flex items-center space-x-2 pl-2 pr-2.5 py-1 rounded-full bg-[#0d142d] hover:bg-[#121c3d] border border-cyan-500/25 transition-all cursor-pointer shadow-xs"
+                    aria-label="User menu"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                      {getFirstName(user)[0]}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-200 max-w-[120px] truncate">
+                      {getFirstName(user)}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
+                  </button>
+
+                  {/* Profile Dropdown Card */}
+                  {profileOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-[#0a0f24] rounded-2xl shadow-2xl border border-cyan-500/20 py-2 z-50 animate-fade-in backdrop-blur-xl">
+                      <div className="px-4 py-2.5 border-b border-slate-800/80">
+                        <p className="text-xs font-bold text-white truncate">
+                          {getFirstName(user)}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
+                        <div className="mt-1.5 flex items-center text-[10px] text-cyan-400 font-semibold">
+                          <ShieldCheck className="w-3 h-3 mr-1 inline" />
+                          <span>Enterprise Active</span>
+                        </div>
+                      </div>
+
+                      <div className="py-1 text-xs text-slate-300">
+                        <Link
+                          to="/dashboard"
+                          className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Workspace Overview</span>
+                        </Link>
+                        <Link
+                          to="/dashboard/datasets"
+                          className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <Database className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Datasets Catalog</span>
+                        </Link>
+                        <Link
+                          to="/dashboard/pipelines"
+                          className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <GitBranch className="w-3.5 h-3.5 text-purple-400" />
+                          <span>ML Pipelines</span>
+                        </Link>
+                      </div>
+
+                      <div className="pt-1 border-t border-slate-800/80">
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center space-x-2 px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex items-center space-x-3">
                 <Link
                   to="/login"
-                  className="flex items-center space-x-1.5 px-4 py-2 text-sm font-medium text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 rounded-lg transition-colors"
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 rounded-full transition-colors"
                 >
-                  <LogIn className="w-4 h-4" />
+                  <LogIn className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Sign In</span>
                 </Link>
+                {/* Nexux Get Started Glowing Pill */}
                 <Link
                   to="/register"
-                  className="flex items-center space-x-1.5 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm hover:shadow-indigo-500/25 transition-all"
+                  className="flex items-center space-x-1.5 px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 rounded-full shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Create Account</span>
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Get Started</span>
                 </Link>
               </div>
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
+          {/* Mobile Menu Button */}
+          <div className="flex md:hidden items-center space-x-2">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none"
-              aria-label="Toggle menu"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+              aria-label="Toggle navigation menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile menu dropdown */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-slate-200 bg-white px-4 pt-2 pb-4 space-y-2">
+        <div className="md:hidden bg-[#070b1c] border-b border-cyan-500/20 px-4 pt-3 pb-6 space-y-3 animate-fade-in shadow-2xl">
           <Link
             to="/"
-            onClick={() => setMobileMenuOpen(false)}
-            className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
+            className="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
           >
             Home
           </Link>
-          {isAuthenticated && (
+
+          {isAuthenticated ? (
             <>
               <Link
                 to="/dashboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
+                className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
               >
-                Dashboard
+                <LayoutDashboard className="w-4 h-4 text-cyan-400" />
+                <span>Dashboard</span>
               </Link>
               <Link
                 to="/dashboard/datasets"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-100"
+                className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
               >
-                Datasets
+                <Database className="w-4 h-4 text-blue-400" />
+                <span>Datasets Catalog</span>
               </Link>
-            </>
-          )}
-          <div className="pt-2 border-t border-slate-200">
-            {isAuthenticated ? (
-              <div className="space-y-2">
-                <div className="px-3 py-1 text-sm font-medium text-slate-500">
-                  Signed in as <span className="font-semibold text-slate-800">{user?.name || user?.email}</span>
+              <Link
+                to="/dashboard/pipelines"
+                className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
+              >
+                <GitBranch className="w-4 h-4 text-purple-400" />
+                <span>ML Pipelines</span>
+              </Link>
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded-full bg-cyan-600 text-white flex items-center justify-center font-bold text-xs">
+                    {getFirstName(user)[0]}
+                  </div>
+                  <span className="text-xs font-semibold text-white">{getFirstName(user)}</span>
                 </div>
                 <button
-                  onClick={() => {
-                    handleLogout();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full flex items-center space-x-2 px-3 py-2 text-left rounded-md text-base font-medium text-rose-600 hover:bg-rose-50"
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/10"
                 >
-                  <LogOut className="w-5 h-5" />
-                  <span>Logout</span>
+                  Logout
                 </button>
               </div>
-            ) : (
-              <div className="space-y-2 pt-2">
-                <Link
-                  to="/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block w-full text-center px-4 py-2 text-base font-medium text-slate-700 hover:bg-slate-100 rounded-md"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/register"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block w-full text-center px-4 py-2 text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
-                >
-                  Create Account
-                </Link>
-              </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="pt-2 flex flex-col space-y-2">
+              <Link
+                to="/login"
+                className="text-center py-2 text-sm font-semibold text-slate-200 border border-slate-700 rounded-full"
+              >
+                Sign In
+              </Link>
+              <Link
+                to="/register"
+                className="text-center py-2 text-sm font-bold text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 rounded-full shadow-lg shadow-cyan-500/30"
+              >
+                Get Started
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </nav>
