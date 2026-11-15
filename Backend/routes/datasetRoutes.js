@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const upload = require('../middleware/uploadMiddleware');
+const { handleUpload } = require('../middleware/uploadMiddleware');
 const { protect } = require('../middleware/authMiddleware');
 const {
   uploadDataset,
@@ -8,7 +8,6 @@ const {
   getDatasetById,
   getDatasetPreview,
   getDatasetDownloadUrl,
-  downloadLocalFile,
   deleteDataset
 } = require('../controllers/datasetController');
 
@@ -16,7 +15,7 @@ const {
 router.use(protect);
 
 // @route   POST /api/datasets/upload
-router.post('/upload', upload.single('file'), uploadDataset);
+router.post('/upload', handleUpload, uploadDataset);
 
 // @route   GET /api/datasets
 router.get('/', getDatasets);
@@ -29,9 +28,6 @@ router.get('/:id/preview', getDatasetPreview);
 
 // @route   GET /api/datasets/:id/download
 router.get('/:id/download', getDatasetDownloadUrl);
-
-// @route   GET /api/datasets/file/:key (development local download)
-router.get('/file/:key', downloadLocalFile);
 
 // @route   DELETE /api/datasets/:id
 router.delete('/:id', deleteDataset);

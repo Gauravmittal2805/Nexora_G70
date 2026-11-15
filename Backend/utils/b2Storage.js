@@ -33,16 +33,22 @@ const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
 
     const result = await parallelUpload.done();
 
+    const storageUrl = process.env.B2_PUBLIC_URL_PREFIX
+      ? `${process.env.B2_PUBLIC_URL_PREFIX}/${key}`
+      : `https://s3.${process.env.B2_REGION || 'us-west-004'}.backblazeb2.com/${process.env.B2_BUCKET_NAME}/${key}`;
+
     return {
       provider: 'backblaze_b2',
       bucket: process.env.B2_BUCKET_NAME,
       key,
       eTag: result.ETag || null,
-      localPath: null
+      localPath: null,
+      storageUrl
     };
   } else {
     // Local storage fallback for dev/testing when B2 keys are not yet added
-    const destPath = path.join(LOCAL_STORAGE_DIR, path.basename(key));
+    const destFileName = path.basename(key);
+    const destPath = path.join(LOCAL_STORAGE_DIR, destFileName);
     await fs.promises.copyFile(filePath, destPath);
 
     return {
@@ -50,7 +56,8 @@ const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
       bucket: 'local',
       key,
       eTag: null,
-      localPath: destPath
+      localPath: destPath,
+      storageUrl: `/uploads/datasets/${destFileName}`
     };
   }
 };

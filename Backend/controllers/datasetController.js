@@ -1,11 +1,31 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Dataset = require('../models/Dataset');
 const { parseCsvStream, parseJsonStream } = require('../utils/streamParsers');
 const { uploadDatasetFile, getDownloadUrl, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
 
 /**
- * @desc    Upload and stream-parse a new dataset (CSV/JSON/JSONL)
+ * Helper to find a dataset by either its custom datasetId (UUID) or Mongo _id
+ */
+const findUserDataset = async (id, userId) => {
+  const query = {
+    userId,
+    $or: [
+      { datasetId: id }
+    ]
+  };
+
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    query.$or.push({ _id: id });
+  }
+
+  return await Dataset.findOne(query);
+};
+
+/**
+ * @desc    Upload CSV/JSON file and save dataset metadata in MongoDB
  * @route   POST /api/datasets/upload
  * @access  Private
  */
@@ -13,32 +33,36 @@ const uploadDataset = async (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({
       success: false,
-      message: 'Please upload a file (.csv, .json, or .jsonl)'
+      message: 'Please provide a CSV or JSON file to upload'
     });
   }
 
   const tempFilePath = req.file.path;
-  const originalFilename = req.file.originalname;
-  const ext = path.extname(originalFilename).toLowerCase();
-  const fileSizeBytes = req.file.size;
+  const fileName = req.file.originalname;
+  const ext = path.extname(fileName).toLowerCase();
+  const fileSize = req.file.size;
   const mimeType = req.file.mimetype;
 
-  // Determine file format
-  let fileFormat;
+  // Validate format (CSV or JSON)
+  let fileType;
   if (ext === '.csv') {
-    fileFormat = 'csv';
+    fileType = 'csv';
   } else if (ext === '.json') {
-    fileFormat = 'json';
+    fileType = 'json';
   } else if (ext === '.jsonl') {
-    fileFormat = 'jsonl';
+    fileType = 'jsonl';
   } else {
-    // Clean up temp file
     if (fs.existsSync(tempFilePath)) await fs.promises.unlink(tempFilePath);
     return res.status(400).json({
       success: false,
-      message: 'Unsupported format. Please upload CSV, JSON, or JSONL files.'
+      message: 'Invalid file format. Only CSV and JSON files are supported.'
     });
   }
+
+  const datasetId = crypto.randomUUID();
+  const datasetName = (req.body.name && req.body.name.trim()) || path.parse(fileName).name;
+  const description = (req.body.description && req.body.description.trim()) || '';
+  const storageKey = `datasets/${req.user._id}/${Date.now()}_${path.basename(fileName)}`;
 
   // Parse tags if provided
   let tags = [];
@@ -54,35 +78,33 @@ const uploadDataset = async (req, res, next) => {
     }
   }
 
-  const datasetName = (req.body.name && req.body.name.trim()) || path.parse(originalFilename).name;
-  const description = (req.body.description && req.body.description.trim()) || '';
-  const storageKey = `datasets/${req.user._id}/${Date.now()}_${path.basename(originalFilename)}`;
-
   try {
-    // 1. Run streaming parser for schema inference & preview extraction
+    // 1. Stream-parse file to infer column types, row counts, and extract preview rows
     let parseResult;
-    if (fileFormat === 'csv') {
+    if (fileType === 'csv') {
       parseResult = await parseCsvStream(tempFilePath, 50);
     } else {
-      parseResult = await parseJsonStream(tempFilePath, fileFormat === 'jsonl', 50);
+      parseResult = await parseJsonStream(tempFilePath, fileType === 'jsonl', 50);
     }
 
-    // 2. Stream upload to Backblaze B2 / local storage
+    // 2. Upload file to Backblaze B2 (or local fallback storage)
     const storageResult = await uploadDatasetFile({
       filePath: tempFilePath,
       key: storageKey,
       mimeType
     });
 
-    // 3. Save dataset document in MongoDB Atlas
+    // 3. Create Dataset document in MongoDB
     const dataset = await Dataset.create({
-      user: req.user._id,
+      datasetId,
+      userId: req.user._id,
+      fileName,
+      fileType,
+      fileSize,
+      storageUrl: storageResult.storageUrl,
       name: datasetName,
       description,
-      originalFilename,
-      fileFormat,
       mimeType,
-      fileSizeBytes,
       storage: {
         provider: storageResult.provider,
         bucket: storageResult.bucket,
@@ -98,31 +120,33 @@ const uploadDataset = async (req, res, next) => {
         delimiter: parseResult.delimiter || ','
       },
       previewData: parseResult.previewData,
-      tags
+      tags,
+      createdAt: new Date()
     });
 
-    // 4. Remove local temp spool file
+    // 4. Clean up temporary multer spool file
     if (fs.existsSync(tempFilePath)) {
       await fs.promises.unlink(tempFilePath);
     }
 
     return res.status(201).json({
       success: true,
-      message: 'Dataset uploaded and processed successfully',
+      message: 'Dataset uploaded and saved successfully',
       data: {
-        _id: dataset._id,
+        datasetId: dataset.datasetId,
+        userId: dataset.userId,
+        fileName: dataset.fileName,
+        fileType: dataset.fileType,
+        fileSize: dataset.fileSize,
+        storageUrl: dataset.storageUrl,
+        createdAt: dataset.createdAt,
         name: dataset.name,
-        originalFilename: dataset.originalFilename,
-        fileFormat: dataset.fileFormat,
-        fileSizeBytes: dataset.fileSizeBytes,
-        status: dataset.status,
         metadata: dataset.metadata,
         tags: dataset.tags,
-        createdAt: dataset.createdAt
+        status: dataset.status
       }
     });
   } catch (error) {
-    // Clean up temporary file on failure
     if (fs.existsSync(tempFilePath)) {
       try {
         await fs.promises.unlink(tempFilePath);
@@ -131,16 +155,16 @@ const uploadDataset = async (req, res, next) => {
       }
     }
 
-    console.error('Dataset Upload Error:', error);
+    console.error('Dataset Upload Processing Error:', error);
     return res.status(500).json({
       success: false,
-      message: `Dataset processing failed: ${error.message}`
+      message: `Failed to process and upload dataset: ${error.message}`
     });
   }
 };
 
 /**
- * @desc    Get paginated list of datasets for logged-in user
+ * @desc    Get paginated listing of user datasets
  * @route   GET /api/datasets
  * @access  Private
  */
@@ -150,43 +174,55 @@ const getDatasets = async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     const skip = (page - 1) * limit;
 
-    const query = { user: req.user._id };
+    const query = { userId: req.user._id };
 
-    // Format filter
-    if (req.query.fileFormat) {
-      query.fileFormat = req.query.fileFormat.toLowerCase();
+    if (req.query.fileType) {
+      query.fileType = req.query.fileType.toLowerCase();
     }
 
-    // Status filter
     if (req.query.status) {
       query.status = req.query.status;
     }
 
-    // Search query
     if (req.query.search) {
       const searchRegex = new RegExp(req.query.search.trim(), 'i');
       query.$or = [
+        { fileName: searchRegex },
         { name: searchRegex },
         { description: searchRegex },
         { tags: searchRegex }
       ];
     }
 
-    // Sorting
     const sortBy = req.query.sortBy || 'createdAt';
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
     const sort = { [sortBy]: sortOrder };
 
     const totalCount = await Dataset.countDocuments(query);
     const datasets = await Dataset.find(query)
-      .select('-previewData -storage.localPath') // Omit preview and internal paths
+      .select('-previewData -storage.localPath')
       .sort(sort)
       .skip(skip)
       .limit(limit);
 
     return res.status(200).json({
       success: true,
-      data: datasets,
+      data: datasets.map((d) => ({
+        datasetId: d.datasetId,
+        userId: d.userId,
+        fileName: d.fileName,
+        fileType: d.fileType,
+        fileSize: d.fileSize,
+        storageUrl: d.storageUrl,
+        createdAt: d.createdAt,
+        name: d.name,
+        metadata: {
+          rowCount: d.metadata.rowCount,
+          columnCount: d.metadata.columnCount
+        },
+        tags: d.tags,
+        status: d.status
+      })),
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalCount / limit) || 1,
@@ -200,16 +236,13 @@ const getDatasets = async (req, res, next) => {
 };
 
 /**
- * @desc    Get dataset details by ID
+ * @desc    Get dataset details by datasetId or _id
  * @route   GET /api/datasets/:id
  * @access  Private
  */
 const getDatasetById = async (req, res, next) => {
   try {
-    const dataset = await Dataset.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    }).select('-previewData -storage.localPath');
+    const dataset = await findUserDataset(req.params.id, req.user._id);
 
     if (!dataset) {
       return res.status(404).json({
@@ -220,7 +253,20 @@ const getDatasetById = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      data: dataset
+      data: {
+        datasetId: dataset.datasetId,
+        userId: dataset.userId,
+        fileName: dataset.fileName,
+        fileType: dataset.fileType,
+        fileSize: dataset.fileSize,
+        storageUrl: dataset.storageUrl,
+        createdAt: dataset.createdAt,
+        name: dataset.name,
+        description: dataset.description,
+        metadata: dataset.metadata,
+        tags: dataset.tags,
+        status: dataset.status
+      }
     });
   } catch (error) {
     next(error);
@@ -228,18 +274,14 @@ const getDatasetById = async (req, res, next) => {
 };
 
 /**
- * @desc    Get preview rows for a dataset
+ * @desc    Get dataset table preview rows
  * @route   GET /api/datasets/:id/preview
  * @access  Private
  */
 const getDatasetPreview = async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
-
-    const dataset = await Dataset.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    }).select('name metadata previewData');
+    const dataset = await findUserDataset(req.params.id, req.user._id);
 
     if (!dataset) {
       return res.status(404).json({
@@ -252,8 +294,8 @@ const getDatasetPreview = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      datasetId: dataset._id,
-      name: dataset.name,
+      datasetId: dataset.datasetId,
+      fileName: dataset.fileName,
       totalRows: dataset.metadata.rowCount,
       columns: dataset.metadata.columns,
       previewCount: previewSlice.length,
@@ -265,16 +307,13 @@ const getDatasetPreview = async (req, res, next) => {
 };
 
 /**
- * @desc    Get pre-signed download URL or direct download route
+ * @desc    Get download URL (presigned B2 or direct)
  * @route   GET /api/datasets/:id/download
  * @access  Private
  */
 const getDatasetDownloadUrl = async (req, res, next) => {
   try {
-    const dataset = await Dataset.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    });
+    const dataset = await findUserDataset(req.params.id, req.user._id);
 
     if (!dataset) {
       return res.status(404).json({
@@ -288,12 +327,13 @@ const getDatasetDownloadUrl = async (req, res, next) => {
       bucket: dataset.storage.bucket,
       key: dataset.storage.key,
       localPath: dataset.storage.localPath,
-      expiresIn: 300 // 5 minutes
+      expiresIn: 300
     });
 
     return res.status(200).json({
       success: true,
-      filename: dataset.originalFilename,
+      datasetId: dataset.datasetId,
+      fileName: dataset.fileName,
       mimeType: dataset.mimeType,
       ...downloadInfo
     });
@@ -303,46 +343,13 @@ const getDatasetDownloadUrl = async (req, res, next) => {
 };
 
 /**
- * @desc    Serve local file download in development/offline mode
- * @route   GET /api/datasets/file/:key
- * @access  Private
- */
-const downloadLocalFile = async (req, res, next) => {
-  try {
-    const key = decodeURIComponent(req.params.key);
-    const dataset = await Dataset.findOne({
-      'storage.key': key,
-      user: req.user._id
-    });
-
-    if (!dataset || !dataset.storage.localPath || !fs.existsSync(dataset.storage.localPath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found on storage'
-      });
-    }
-
-    res.setHeader('Content-Disposition', `attachment; filename="${dataset.originalFilename}"`);
-    res.setHeader('Content-Type', dataset.mimeType);
-
-    const stream = fs.createReadStream(dataset.storage.localPath);
-    stream.pipe(res);
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Delete a dataset and its stored object
+ * @desc    Delete dataset record and storage file
  * @route   DELETE /api/datasets/:id
  * @access  Private
  */
 const deleteDataset = async (req, res, next) => {
   try {
-    const dataset = await Dataset.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    });
+    const dataset = await findUserDataset(req.params.id, req.user._id);
 
     if (!dataset) {
       return res.status(404).json({
@@ -351,7 +358,6 @@ const deleteDataset = async (req, res, next) => {
       });
     }
 
-    // Delete object from Backblaze B2 / local storage
     await deleteDatasetFile({
       provider: dataset.storage.provider,
       bucket: dataset.storage.bucket,
@@ -359,7 +365,6 @@ const deleteDataset = async (req, res, next) => {
       localPath: dataset.storage.localPath
     });
 
-    // Delete document from MongoDB
     await dataset.deleteOne();
 
     return res.status(200).json({
@@ -377,6 +382,5 @@ module.exports = {
   getDatasetById,
   getDatasetPreview,
   getDatasetDownloadUrl,
-  downloadLocalFile,
   deleteDataset
 };

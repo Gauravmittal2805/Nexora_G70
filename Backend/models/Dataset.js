@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const columnSchema = new mongoose.Schema({
   name: {
@@ -21,15 +22,44 @@ const columnSchema = new mongoose.Schema({
 }, { _id: false });
 
 const datasetSchema = new mongoose.Schema({
-  user: {
+  datasetId: {
+    type: String,
+    unique: true,
+    required: true,
+    default: () => crypto.randomUUID(),
+    index: true
+  },
+  userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
     index: true
   },
+  fileName: {
+    type: String,
+    required: [true, 'File name is required'],
+    trim: true
+  },
+  fileType: {
+    type: String,
+    required: [true, 'File type is required'],
+    enum: {
+      values: ['csv', 'json', 'jsonl'],
+      message: '{VALUE} is not a supported file type. Only csv, json, or jsonl allowed'
+    },
+    lowercase: true
+  },
+  fileSize: {
+    type: Number,
+    required: [true, 'File size is required']
+  },
+  storageUrl: {
+    type: String,
+    required: [true, 'Storage URL is required']
+  },
+  // Additional rich metadata for analytics, preview & B2 integration
   name: {
     type: String,
-    required: [true, 'Dataset name is required'],
     trim: true,
     maxlength: [120, 'Dataset name cannot exceed 120 characters']
   },
@@ -39,37 +69,21 @@ const datasetSchema = new mongoose.Schema({
     maxlength: [1000, 'Description cannot exceed 1000 characters'],
     default: ''
   },
-  originalFilename: {
-    type: String,
-    required: true
-  },
-  fileFormat: {
-    type: String,
-    required: true,
-    enum: ['csv', 'json', 'jsonl'],
-    lowercase: true
-  },
   mimeType: {
-    type: String,
-    required: true
-  },
-  fileSizeBytes: {
-    type: Number,
-    required: true
+    type: String
   },
   storage: {
     provider: {
       type: String,
-      enum: ['backblaze_b2', 's3', 'local'],
-      default: 'backblaze_b2'
+      enum: ['local', 'backblaze_b2', 's3'],
+      default: 'local'
     },
     bucket: {
       type: String,
       default: 'local'
     },
     key: {
-      type: String,
-      required: true
+      type: String
     },
     localPath: {
       type: String,
@@ -83,12 +97,8 @@ const datasetSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['uploading', 'processing', 'ready', 'failed'],
-    default: 'uploading',
+    default: 'ready',
     index: true
-  },
-  errorMessage: {
-    type: String,
-    default: null
   },
   metadata: {
     rowCount: {
@@ -105,7 +115,6 @@ const datasetSchema = new mongoose.Schema({
       default: ','
     }
   },
-  // Store top 20-50 rows for instant rendering in frontend table preview
   previewData: [{
     type: mongoose.Schema.Types.Mixed
   }],
@@ -114,17 +123,16 @@ const datasetSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   }],
-  visibility: {
-    type: String,
-    enum: ['private', 'public', 'shared'],
-    default: 'private'
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
 });
 
-// Indexes for query performance
-datasetSchema.index({ user: 1, createdAt: -1 });
-datasetSchema.index({ name: 'text', description: 'text', tags: 'text' });
+// Compound indexes for user query performance and text search
+datasetSchema.index({ userId: 1, createdAt: -1 });
+datasetSchema.index({ fileName: 'text', name: 'text', description: 'text' });
 
 module.exports = mongoose.model('Dataset', datasetSchema);
