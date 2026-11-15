@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/dashboard/Sidebar';
 import Header from '../components/dashboard/Header';
+import Footer from '../components/Footer';
 
 const DashboardLayout = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -26,10 +27,15 @@ const DashboardLayout = () => {
         {/* Top Header */}
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
 
-        {/* Scrollable Page Body */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+        {/* Scrollable Page Body with Integrated Footer */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-between">
+          <div className="max-w-7xl mx-auto w-full">
             <Outlet />
+          </div>
+
+          {/* Integrated Platform Footer */}
+          <div className="mt-14 max-w-7xl mx-auto w-full">
+            <Footer />
           </div>
         </main>
       </div>
