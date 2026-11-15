@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import Alert from '../components/common/Alert';
+import NexoraLogo from '../components/common/NexoraLogo';
 import {
   validateName,
   validateEmail,
@@ -188,10 +189,12 @@ const Register = () => {
       <div className="lg:col-span-5 px-6 py-5 sm:px-8 sm:py-6 flex flex-col justify-between bg-gradient-to-b from-[#fafbfa] via-white to-[#fef9c3]/20 h-full overflow-hidden">
         <div>
           {/* Brand Pill Badge */}
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-slate-800 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span className="tracking-tight">Nexora</span>
-          </div>
+          <Link
+            to="/"
+            className="inline-flex items-center px-3 py-1 rounded-full bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200/80 transition-colors"
+          >
+            <NexoraLogo size="xs" theme="light" badgeText="AI" />
+          </Link>
 
           {/* Heading & Subtitle - Larger & prominent */}
           <div className="mt-3 mb-3.5">

@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getFirstName } from '../../utils/userUtils';
+import NexoraLogo from '../common/NexoraLogo';
 import {
   LayoutDashboard,
   Database,
@@ -99,31 +100,23 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#070b1c] text-slate-300 border-r border-cyan-500/15 select-none">
       {/* Brand Header */}
-      <div className="flex items-center justify-between px-4 h-16 border-b border-slate-800">
+      <div className="flex items-center justify-between px-6 h-20 border-b border-cyan-500/15 shrink-0">
         <NavLink
           to="/dashboard"
-          className="flex items-center space-x-3 overflow-hidden group"
+          className="flex items-center overflow-hidden group"
           onClick={closeMobile}
         >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="font-extrabold text-lg tracking-tight text-white leading-none">
-                nexora
-              </span>
-              <span className="text-[9px] text-cyan-400 font-bold tracking-widest uppercase mt-0.5">
-                AI PLATFORM
-              </span>
-            </div>
-          )}
+          <NexoraLogo
+            size="md"
+            showText={!isCollapsed}
+            badgeText={!isCollapsed ? 'AI PLATFORM' : ''}
+          />
         </NavLink>
 
         {/* Desktop collapse toggle */}
         <button
           onClick={toggleCollapse}
-          className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-white/5 transition-colors"
+          className="hidden md:flex p-2 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-white/5 transition-colors cursor-pointer"
           title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
           {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -132,18 +125,18 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
         {/* Mobile close button */}
         <button
           onClick={closeMobile}
-          className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+          className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Nav Link Items */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin scrollbar-thumb-slate-800">
+      {/* Nav Link Items - Spacious & Uncompressed */}
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-7 scrollbar-thin scrollbar-thumb-slate-800">
         {navGroups.map((group, gIdx) => (
-          <div key={gIdx} className="space-y-1">
+          <div key={gIdx} className="space-y-1.5">
             {!isCollapsed ? (
-              <div className="px-3 text-[10px] font-bold text-slate-500 tracking-widest uppercase">
+              <div className="px-3.5 pb-1 text-[11px] font-bold text-slate-400 tracking-wider uppercase">
                 {group.group}
               </div>
             ) : (
@@ -160,23 +153,23 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
                   to={item.path}
                   onClick={closeMobile}
                   title={isCollapsed ? item.name : undefined}
-                  className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all group relative ${
+                  className={`flex items-center px-3.5 py-3 rounded-2xl text-sm font-semibold transition-all group relative ${
                     isActive
-                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_18px_rgba(6,182,212,0.35)]'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   <Icon
-                    className={`w-4 h-4 shrink-0 transition-transform ${
+                    className={`w-5 h-5 shrink-0 transition-transform ${
                       isActive ? 'text-white' : 'text-slate-400 group-hover:text-cyan-400'
                     }`}
                   />
                   {!isCollapsed && (
-                    <div className="flex items-center justify-between w-full ml-3 overflow-hidden">
-                      <span className="truncate text-xs font-semibold">{item.name}</span>
+                    <div className="flex items-center justify-between w-full ml-3.5 overflow-hidden">
+                      <span className="truncate text-sm font-semibold tracking-wide">{item.name}</span>
                       {item.badge && (
                         <span
-                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
                             isActive ? 'bg-white/20 text-white' : item.badgeColor
                           }`}
                         >
@@ -194,41 +187,41 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
 
       {/* Storage Status Widget */}
       {!isCollapsed && (
-        <div className="p-3 mx-3 mb-3 rounded-2xl bg-[#0a0f24] border border-cyan-500/20">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5 font-medium">
+        <div className="p-4 mx-4 mb-4 rounded-2xl bg-[#0a0f24] border border-cyan-500/20 shadow-lg">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-2 font-medium">
             <span>Storage Usage</span>
-            <span className="text-cyan-300 font-semibold">1.4 GB / 10 GB</span>
+            <span className="text-cyan-300 font-bold">1.4 GB / 10 GB</span>
           </div>
-          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-1.5 rounded-full w-[14%]" />
+          <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2 rounded-full w-[14%]" />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2.5">
             <span>Workspace: Active</span>
             <span className="text-cyan-400 font-semibold flex items-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mr-1 animate-pulse" />
-              Ready
+              <span className="w-2 h-2 rounded-full bg-cyan-400 mr-1.5 animate-pulse" />
+              Operational
             </span>
           </div>
         </div>
       )}
 
       {/* User Footer Profile & Logout with First Name */}
-      <div className="p-3 border-t border-slate-800">
+      <div className="p-4 border-t border-slate-800 shrink-0">
         <div
           className={`flex items-center ${
             isCollapsed ? 'justify-center' : 'justify-between'
-          } p-2 rounded-xl bg-[#0a0f24] border border-slate-800 hover:border-cyan-500/30 transition-colors`}
+          } p-2.5 rounded-2xl bg-[#0a0f24] border border-slate-800 hover:border-cyan-500/30 transition-colors`}
         >
-          <div className="flex items-center space-x-2.5 overflow-hidden">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase shrink-0">
+          <div className="flex items-center space-x-3 overflow-hidden">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase shrink-0 shadow-xs">
               {getFirstName(user)[0]}
             </div>
             {!isCollapsed && (
               <div className="flex flex-col truncate">
-                <span className="text-xs font-semibold text-white truncate">
+                <span className="text-sm font-bold text-white truncate">
                   {getFirstName(user)}
                 </span>
-                <span className="text-[10px] text-slate-400 truncate">{user?.email}</span>
+                <span className="text-xs text-slate-400 truncate">{user?.email}</span>
               </div>
             )}
           </div>
@@ -236,7 +229,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
           {!isCollapsed && (
             <button
               onClick={handleLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -252,7 +245,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
       {/* Desktop Persistent Sidebar */}
       <aside
         className={`hidden md:block transition-all duration-300 ease-in-out shrink-0 sticky top-0 h-screen ${
-          isCollapsed ? 'w-20' : 'w-64'
+          isCollapsed ? 'w-20' : 'w-72'
         }`}
       >
         {sidebarContent}
@@ -265,7 +258,7 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
             className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity"
             onClick={closeMobile}
           />
-          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl z-10">
+          <div className="relative w-80 max-w-[85vw] h-full shadow-2xl z-10">
             {sidebarContent}
           </div>
         </div>

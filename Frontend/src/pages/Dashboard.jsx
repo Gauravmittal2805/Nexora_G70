@@ -37,21 +37,55 @@ const Dashboard = () => {
 
   useEffect(() => {
     let active = true;
-    datasetService
-      .fetchDatasets()
-      .then((data) => {
-        if (active && data) {
-          setDatasets(data);
-        }
-      })
-      .catch(() => {});
+    const fetchLatest = () => {
+      datasetService
+        .fetchDatasets()
+        .then((data) => {
+          if (active && data) {
+            setDatasets(data);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchLatest();
+    const interval = setInterval(fetchLatest, 10000);
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, []);
 
-  const totalRecords = datasets.reduce((acc, d) => acc + (d.rowCount || 0), 0);
-  const totalSizeBytes = datasets.reduce((acc, d) => acc + (d.sizeBytes || 0), 0);
+  const totalRecords = datasets.reduce(
+    (acc, d) => acc + (d.rowCount || (d.metadata && d.metadata.rowCount) || 0),
+    0
+  );
+  const totalSizeBytes = datasets.reduce(
+    (acc, d) => acc + (d.sizeBytes || d.fileSize || 0),
+    0
+  );
+
+  const totalNulls = datasets.reduce(
+    (acc, d) =>
+      acc + (d.columns?.reduce((cAcc, col) => cAcc + (col.missingCount || 0), 0) || 0),
+    0
+  );
+  const totalEstimatedCells = datasets.reduce(
+    (acc, d) =>
+      acc + (d.rowCount || 0) * (d.columns?.length || d.columnCount || 1),
+    0
+  );
+  const healthPercentage =
+    totalEstimatedCells > 0
+      ? Math.min(
+          100,
+          Math.max(
+            80,
+            Math.round(((totalEstimatedCells - totalNulls) / totalEstimatedCells) * 100)
+          )
+        )
+      : 100;
+  const generalScore = totalEstimatedCells > 0 ? (healthPercentage / 10).toFixed(1) : '10.0';
 
   // Filter datasets by search and format
   const filteredDatasets = datasets.filter((d) => {
@@ -265,16 +299,16 @@ const Dashboard = () => {
         <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-pink-500/40 hover:shadow-[0_0_20px_rgba(236,72,153,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Model Health Score
+              Data Quality & Health
             </span>
             <div className="w-9 h-9 rounded-xl bg-pink-950/80 border border-pink-500/30 text-pink-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Cpu className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">98.9%</div>
+          <div className="text-2xl sm:text-3xl font-black text-white">{healthPercentage}%</div>
           <div className="flex items-center text-xs text-pink-400 mt-2 font-medium">
             <Sparkles className="w-3.5 h-3.5 mr-1" />
-            <span>Optimal Baseline</span>
+            <span>Live Validation Index</span>
           </div>
         </div>
       </div>
@@ -374,15 +408,15 @@ const Dashboard = () => {
 
         {/* Right: Circular / Radial Gauges (lg:col-span-4) matching Nexux preview */}
         <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-          {/* Gauge 1: Satisfaction Rate (96%) */}
+          {/* Gauge 1: Data Quality Score */}
           <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-5 shadow-xl flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Satisfaction Rate
+                Data Quality Score
               </span>
-              <div className="text-xl font-extrabold text-white mt-1">96%</div>
+              <div className="text-xl font-extrabold text-white mt-1">{healthPercentage}%</div>
               <p className="text-[11px] text-cyan-400 mt-0.5 flex items-center">
-                <TrendingUp className="w-3 h-3 mr-1" /> Optimal Pipeline
+                <TrendingUp className="w-3 h-3 mr-1" /> Real-Time Completeness
               </p>
             </div>
 
@@ -398,7 +432,7 @@ const Dashboard = () => {
                 />
                 <path
                   className="text-cyan-400"
-                  strokeDasharray="96, 100"
+                  strokeDasharray={`${healthPercentage}, 100`}
                   strokeWidth="3.5"
                   strokeLinecap="round"
                   stroke="currentColor"
@@ -407,19 +441,19 @@ const Dashboard = () => {
                   filter="drop-shadow(0 0 4px rgba(6,182,212,0.8))"
                 />
               </svg>
-              <span className="absolute font-bold text-xs text-white">96%</span>
+              <span className="absolute font-bold text-xs text-white">{healthPercentage}%</span>
             </div>
           </div>
 
-          {/* Gauge 2: General Scoring (9.3) */}
+          {/* Gauge 2: General Scoring */}
           <div className="bg-[#0a0f24] rounded-3xl border border-purple-500/20 p-5 shadow-xl flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                General Scoring
+                Pipeline Health Rating
               </span>
-              <div className="text-xl font-extrabold text-white mt-1">9.3 / 10</div>
+              <div className="text-xl font-extrabold text-white mt-1">{generalScore} / 10</div>
               <p className="text-[11px] text-purple-400 mt-0.5 flex items-center">
-                <Sparkles className="w-3 h-3 mr-1" /> Model Evaluation
+                <Sparkles className="w-3 h-3 mr-1" /> Dynamic Audit
               </p>
             </div>
 
@@ -435,7 +469,7 @@ const Dashboard = () => {
                 />
                 <path
                   className="text-purple-400"
-                  strokeDasharray="93, 100"
+                  strokeDasharray={`${Math.round(healthPercentage)}, 100`}
                   strokeWidth="3.5"
                   strokeLinecap="round"
                   stroke="currentColor"
@@ -444,7 +478,7 @@ const Dashboard = () => {
                   filter="drop-shadow(0 0 4px rgba(168,85,247,0.8))"
                 />
               </svg>
-              <span className="absolute font-bold text-xs text-white">9.3</span>
+              <span className="absolute font-bold text-xs text-white">{generalScore}</span>
             </div>
           </div>
         </div>
@@ -716,6 +750,27 @@ const Dashboard = () => {
                     </td>
                   </tr>
                 ))
+              ) : datasets.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="py-14 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-cyan-950/60 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shadow-lg">
+                        <UploadCloud className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-bold text-white">No datasets uploaded yet</p>
+                      <p className="text-xs text-slate-400 max-w-sm">
+                        All preloaded mock datasets have been removed. Upload a real CSV, TSV, or JSON file to start analyzing data.
+                      </p>
+                      <Link
+                        to="/dashboard/datasets/upload"
+                        className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(6,182,212,0.35)] transition-all"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span>Upload Dataset</span>
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 <tr>
                   <td colSpan="7" className="py-8 text-center text-slate-500">

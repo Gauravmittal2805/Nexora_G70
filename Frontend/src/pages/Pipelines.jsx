@@ -9,6 +9,7 @@ import {
   Play,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import datasetService from '../services/datasetService';
 
 const workflowSteps = [
   {
@@ -136,31 +137,50 @@ const Pipelines = () => {
       </div>
 
       {/* Current Active Pipeline Status */}
-      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Current Stage: Dataset Ingestion Active</span>
-            </div>
-            <h3 className="text-xl font-bold text-white mt-2">
-              Customer Churn ML Baseline Pipeline
-            </h3>
-            <p className="text-xs text-slate-400 max-w-xl">
-              Target variable: <span className="font-mono font-semibold text-cyan-300">Churn (Boolean)</span>.
-              Ingested from <span className="font-semibold text-white">Customer_Churn_Analysis.csv</span>.
-            </p>
-          </div>
+      {(() => {
+        const activeDataset = datasetService.getDatasets()[0] || null;
+        return (
+          <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-8 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>
+                    Current Stage:{' '}
+                    {activeDataset ? 'Dataset Ingestion Active' : 'Awaiting Ingestion'}
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-white mt-2">
+                  {activeDataset
+                    ? `${activeDataset.name || activeDataset.fileName} Pipeline`
+                    : 'Automated ML Baseline Pipeline Studio'}
+                </h3>
+                <p className="text-xs text-slate-400 max-w-xl">
+                  {activeDataset ? (
+                    <>
+                      Dataset loaded with{' '}
+                      <span className="font-semibold text-white font-mono">
+                        {activeDataset.rowCount || activeDataset.metadata?.rowCount || 0} rows
+                      </span>
+                      . Ready for statistical cleaning and feature scaling.
+                    </>
+                  ) : (
+                    'No datasets currently uploaded. Upload your tabular CSV, TSV, or JSON file to configure transformations and training stages.'
+                  )}
+                </p>
+              </div>
 
-          <Link
-            to="/dashboard/datasets/upload"
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(6,182,212,0.35)]"
-          >
-            <Play className="w-3.5 h-3.5 text-white" />
-            <span>Ingest More Data</span>
-          </Link>
-        </div>
-      </div>
+              <Link
+                to="/dashboard/datasets/upload"
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(6,182,212,0.35)]"
+              >
+                <Play className="w-3.5 h-3.5 text-white" />
+                <span>{activeDataset ? 'Ingest More Data' : 'Upload First Dataset'}</span>
+              </Link>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
