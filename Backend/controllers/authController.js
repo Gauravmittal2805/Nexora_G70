@@ -142,7 +142,45 @@ const loginUser = async (req, res, next) => {
   }
 };
 
+// @desc    Get current user profile
+// @route   GET /api/auth/me
+// @access  Private
+const getMe = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized, please log in'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        createdAt: req.user.createdAt
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Logout user
+// @route   POST /api/auth/logout
+// @access  Public
+const logoutUser = (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: 'User logged out successfully'
+  });
+};
+
 module.exports = {
   registerUser,
-  loginUser
+  loginUser,
+  getMe,
+  logoutUser
 };
