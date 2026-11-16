@@ -366,7 +366,13 @@ const uploadDataset = async (req, res, next) => {
     }
 
     console.error('Dataset Upload Error:', error);
-    return res.status(500).json({
+    const isMalformed = error.message && (
+      error.message.includes('Malformed') ||
+      error.message.includes('Parsing failed') ||
+      error.message.includes('CSV Parsing failed')
+    );
+
+    return res.status(isMalformed ? 400 : 500).json({
       success: false,
       message: `Failed to process and upload dataset: ${error.message}`
     });
@@ -493,18 +499,19 @@ const getDatasetById = async (req, res, next) => {
 };
 
 /**
- * @desc    Read CSV/JSON file from storage (Backblaze B2 / local) and return the first 10-20 records for preview
+ * @desc    Read CSV/JSON file using streaming with pagination and return requested preview records
  * @route   GET /api/datasets/:id/preview
  * @access  Public / Private
  */
 const getDatasetPreview = async (req, res, next) => {
   try {
     const { id } = req.params;
-    // Default preview limit to 20 records (clamp between 1 and 100)
+    // Allow users to request a specific number of preview records (default 20, clamp between 1 and 100)
     const limit = Math.min(
       Math.max(1, parseInt(req.query.limit || req.query.pageSize, 10) || 20),
       100
     );
+    // Support pagination with 1-based page index
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
 
     const dataset = await findDataset(id, req.user ? req.user._id : null);
@@ -516,56 +523,77 @@ const getDatasetPreview = async (req, res, next) => {
       });
     }
 
-    let previewRows = [];
+    let paginatedRows = [];
     let detectedColumns = dataset.metadata?.columns || dataset.columns || [];
     let totalRows = dataset.metadata?.rowCount || dataset.rowCount || 0;
+    let hasNextPage = false;
+    let streamReadSuccess = false;
+    let streamErrorWarning = null;
 
-    // 1. Try reading the file directly from Backblaze B2 or local file storage
+    // 1. Optimize reading from storage (Backblaze B2 / local file) using Node.js Streams
     try {
+      const fileType = (dataset.fileType || 'csv').toLowerCase();
+      const delimiter = dataset.metadata?.delimiter || ',';
+
+      // For page 1 with moderate limit, use 1MB S3 byte range to optimize Backblaze B2 latency & bandwidth
+      const byteRange = (page === 1 && limit <= 50) ? 'bytes=0-1048575' : null;
+
       const fileStream = await getDatasetFileStream({
         provider: dataset.storage?.provider,
         bucket: dataset.storage?.bucket,
         key: dataset.storage?.key,
-        localPath: dataset.storage?.localPath || dataset.storagePath
+        localPath: dataset.storage?.localPath || dataset.storagePath,
+        range: byteRange
       });
 
       if (fileStream) {
-        const fileType = (dataset.fileType || 'csv').toLowerCase();
-        const delimiter = dataset.metadata?.delimiter || ',';
-        const streamResult = await readPreviewRowsFromStream({
-          stream: fileStream,
-          fileType,
-          limit: limit * page,
-          delimiter
-        });
+        try {
+          const streamResult = await readPreviewRowsFromStream({
+            stream: fileStream,
+            fileType,
+            page,
+            limit,
+            delimiter
+          });
 
-        if (streamResult && streamResult.rows && streamResult.rows.length > 0) {
-          previewRows = streamResult.rows;
-          if (!detectedColumns || detectedColumns.length === 0) {
-            detectedColumns = streamResult.columns;
+          if (streamResult && streamResult.rows && streamResult.rows.length > 0) {
+            paginatedRows = streamResult.rows;
+            hasNextPage = streamResult.hasNextPage;
+            streamReadSuccess = true;
+            if (!detectedColumns || detectedColumns.length === 0) {
+              detectedColumns = streamResult.columns;
+            }
           }
+        } catch (streamErr) {
+          streamErrorWarning = streamErr.message;
         }
       }
     } catch (storageErr) {
       console.warn(`Live storage preview read warning for ${id}:`, storageErr.message);
     }
 
-    // 2. If storage stream not available, use the previewData cached in MongoDB
-    if (previewRows.length === 0 && dataset.previewData && dataset.previewData.length > 0) {
-      previewRows = dataset.previewData;
+    // 2. Fallback to cached previewData if live stream reading was unavailable or produced no rows
+    if (!streamReadSuccess && paginatedRows.length === 0) {
+      const cachedRows = (dataset.previewData && dataset.previewData.length > 0)
+        ? dataset.previewData
+        : (dataset.sampleRows || []);
+
+      if (cachedRows.length > 0) {
+        const totalAvailable = cachedRows.length;
+        const startIndex = (page - 1) * limit;
+        paginatedRows = cachedRows.slice(startIndex, startIndex + limit);
+        hasNextPage = startIndex + limit < totalAvailable;
+        if (!totalRows) totalRows = totalAvailable;
+      } else if (streamErrorWarning) {
+        // If stream failed due to malformed data and no cached rows exist, return 400 Bad Request
+        return res.status(400).json({
+          success: false,
+          message: `Unable to generate dataset preview: ${streamErrorWarning}`
+        });
+      }
     }
 
-    // 3. Fallback to sampleRows if available
-    if (previewRows.length === 0 && dataset.sampleRows && dataset.sampleRows.length > 0) {
-      previewRows = dataset.sampleRows;
-    }
-
-    // Handle pagination slice of records
-    const totalAvailable = previewRows.length;
-    const totalPages = Math.max(1, Math.ceil(totalAvailable / limit));
-    const validPage = Math.min(page, totalPages);
-    const startIndex = (validPage - 1) * limit;
-    const paginatedRows = previewRows.slice(startIndex, startIndex + limit);
+    const totalPages = totalRows > 0 ? Math.max(1, Math.ceil(totalRows / limit)) : (hasNextPage ? page + 1 : page);
 
     return res.status(200).json({
       success: true,
@@ -575,18 +603,17 @@ const getDatasetPreview = async (req, res, next) => {
       format: (dataset.fileType || 'CSV').toUpperCase(),
       fileType: (dataset.fileType || 'csv').toLowerCase(),
       fileSizeBytes: dataset.fileSize || dataset.sizeBytes || 0,
-      totalRows: totalRows || totalAvailable,
-      totalAvailableRows: totalAvailable,
+      totalRows: totalRows || paginatedRows.length,
       columns: detectedColumns,
       previewCount: paginatedRows.length,
       rows: paginatedRows,
       pagination: {
-        page: validPage,
+        page,
         limit,
         totalPages,
-        totalCount: totalRows || totalAvailable,
-        hasNextPage: validPage < totalPages,
-        hasPrevPage: validPage > 1
+        totalCount: totalRows || paginatedRows.length,
+        hasNextPage: hasNextPage || (totalRows > 0 && page < totalPages),
+        hasPrevPage: page > 1
       }
     });
   } catch (error) {

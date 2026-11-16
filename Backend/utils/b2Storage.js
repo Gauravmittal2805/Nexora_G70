@@ -77,22 +77,43 @@ const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
 
 /**
  * Retrieve a readable stream for a dataset file from Backblaze B2 (or local file)
- * Used to stream-read CSV/JSON records for preview without buffering whole files in memory
+ * Optimized for preview: supports S3 Range requests (e.g. 'bytes=0-1048575' for 1MB chunk)
+ * to avoid downloading entire gigabyte-scale datasets over the network.
  */
-const getDatasetFileStream = async ({ provider, bucket, key, localPath }) => {
+const getDatasetFileStream = async ({ provider, bucket, key, localPath, range = null }) => {
   if (provider === 'backblaze_b2' && isB2Configured()) {
     const s3Client = getS3Client();
-    const command = new GetObjectCommand({
+    const commandParams = {
       Bucket: bucket || getB2BucketName(),
       Key: key
-    });
+    };
 
-    const response = await s3Client.send(command);
-    return response.Body; // Node.js Readable stream
+    if (range) {
+      commandParams.Range = range;
+    }
+
+    try {
+      const response = await s3Client.send(new GetObjectCommand(commandParams));
+      return response.Body; // Node.js Readable stream
+    } catch (err) {
+      // If Range Not Satisfiable (e.g., file size < range), retry fetching full object
+      if (range && (err.name === 'InvalidRange' || err.$metadata?.httpStatusCode === 416)) {
+        delete commandParams.Range;
+        const fallbackResponse = await s3Client.send(new GetObjectCommand(commandParams));
+        return fallbackResponse.Body;
+      }
+      throw err;
+    }
   }
 
   // Check local file path fallback
   if (localPath && fs.existsSync(localPath)) {
+    if (range && range.startsWith('bytes=')) {
+      const parts = range.replace('bytes=', '').split('-');
+      const start = parseInt(parts[0], 10) || 0;
+      const end = parts[1] ? parseInt(parts[1], 10) : undefined;
+      return fs.createReadStream(localPath, { start, end });
+    }
     return fs.createReadStream(localPath);
   }
 
@@ -100,6 +121,12 @@ const getDatasetFileStream = async ({ provider, bucket, key, localPath }) => {
   if (key) {
     const fallbackPath = path.join(LOCAL_STORAGE_DIR, path.basename(key));
     if (fs.existsSync(fallbackPath)) {
+      if (range && range.startsWith('bytes=')) {
+        const parts = range.replace('bytes=', '').split('-');
+        const start = parseInt(parts[0], 10) || 0;
+        const end = parts[1] ? parseInt(parts[1], 10) : undefined;
+        return fs.createReadStream(fallbackPath, { start, end });
+      }
       return fs.createReadStream(fallbackPath);
     }
   }

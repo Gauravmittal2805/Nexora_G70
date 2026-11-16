@@ -20,7 +20,7 @@ const inferPrimitiveType = (val) => {
   if (str.toLowerCase() === 'true' || str.toLowerCase() === 'false') return 'boolean';
   if (!isNaN(str) && str !== '') return 'number';
 
-  // Check if ISO / parseable date
+  // Check if ISO / parseable date (YYYY-MM-DD or similar)
   const dateAttempt = Date.parse(str);
   if (!isNaN(dateAttempt) && /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(str)) {
     return 'date';
@@ -82,10 +82,8 @@ const detectDelimiter = async (filePath) => {
 };
 
 /**
- * Parse a CSV file or readable stream
- * @param {string|stream.Readable} filePathOrStream
- * @param {number} maxPreviewRows (default 50 for full parse, 10-20 for preview)
- * @param {string} customDelimiter
+ * Parse a CSV file or readable stream with full schema inference & summary
+ * Memory-bounded: reads via stream without buffering the whole file in memory
  */
 const parseCsvStream = async (filePathOrStream, maxPreviewRows = 50, customDelimiter = null) => {
   let readableStream;
@@ -104,16 +102,25 @@ const parseCsvStream = async (filePathOrStream, maxPreviewRows = 50, customDelim
     let rowCount = 0;
     const previewData = [];
     const columnStats = {};
+    let isHeaderSeen = false;
+
+    const csvStream = csv({
+      separator: delimiter,
+      trim: true,
+      skipEmptyLines: true,
+      strict: false // Gracefully accept ragged or malformed lines without crashing
+    });
 
     readableStream
-      .pipe(csv({
-        separator: delimiter,
-        trim: true,
-        skipEmptyLines: true
-      }))
+      .pipe(csvStream)
       .on('headers', (headers) => {
+        isHeaderSeen = true;
         headers.forEach((header) => {
-          const cleanHeader = (header || '').trim();
+          let cleanHeader = (header || '').trim();
+          // Remove BOM if present on first header
+          if (cleanHeader.charCodeAt(0) === 0xFEFF) {
+            cleanHeader = cleanHeader.slice(1);
+          }
           if (cleanHeader) {
             columnStats[cleanHeader] = {
               name: cleanHeader,
@@ -155,6 +162,10 @@ const parseCsvStream = async (filePathOrStream, maxPreviewRows = 50, customDelim
         }
       })
       .on('end', () => {
+        if (!isHeaderSeen && rowCount === 0) {
+          return reject(new Error('CSV file appears to be empty or contains no parseable data.'));
+        }
+
         const columns = Object.values(columnStats).map(c => ({
           name: c.name,
           dataType: resolveDominantType(c.types),
@@ -171,25 +182,49 @@ const parseCsvStream = async (filePathOrStream, maxPreviewRows = 50, customDelim
         });
       })
       .on('error', (err) => {
+        // If some rows were parsed before error, resolve with what was recovered
+        if (rowCount > 0 && previewData.length > 0) {
+          const columns = Object.values(columnStats).map(c => ({
+            name: c.name,
+            dataType: resolveDominantType(c.types),
+            nullCount: c.nullCount,
+            sampleValues: c.sampleValues
+          }));
+          return resolve({
+            rowCount,
+            columnCount: columns.length,
+            columns,
+            previewData,
+            delimiter,
+            warning: `CSV parsing completed with warning: ${err.message}`
+          });
+        }
         reject(new Error(`CSV Parsing failed: ${err.message}`));
       });
+
+    readableStream.on('error', (err) => {
+      reject(new Error(`File read stream error: ${err.message}`));
+    });
   });
 };
 
 /**
  * Parse JSON or JSON Lines (.json / .jsonl) via Node.js Stream
- * @param {string|stream.Readable} filePathOrStream
- * @param {boolean} isJsonLines
- * @param {number} maxPreviewRows
  */
 const parseJsonStream = async (filePathOrStream, isJsonLines = false, maxPreviewRows = 50) => {
   if (isJsonLines) {
     return parseJsonLinesStream(filePathOrStream, maxPreviewRows);
   }
 
-  const readableStream = typeof filePathOrStream === 'string'
-    ? fs.createReadStream(filePathOrStream)
-    : filePathOrStream;
+  // Handle stream vs file path input
+  let readableStream;
+  let tempBuffer = null;
+
+  if (typeof filePathOrStream === 'string') {
+    readableStream = fs.createReadStream(filePathOrStream);
+  } else {
+    readableStream = filePathOrStream;
+  }
 
   return new Promise((resolve, reject) => {
     let rowCount = 0;
@@ -254,16 +289,21 @@ const parseJsonStream = async (filePathOrStream, isJsonLines = false, maxPreview
       if (typeof filePathOrStream === 'string') {
         parseJsonLinesStream(filePathOrStream, maxPreviewRows)
           .then(resolve)
-          .catch(() => reject(new Error(`JSON Parsing failed: ${err.message}`)));
+          .catch(() => reject(new Error(`Malformed JSON file: ${err.message}`)));
       } else {
-        reject(new Error(`JSON Parsing failed: ${err.message}`));
+        reject(new Error(`Malformed JSON file: ${err.message}`));
       }
+    });
+
+    readableStream.on('error', (err) => {
+      reject(new Error(`JSON read stream error: ${err.message}`));
     });
   });
 };
 
 /**
- * Parse JSON Lines (.jsonl / NDJSON) line by line
+ * Parse JSON Lines (.jsonl / NDJSON) line by line using readline
+ * Tolerates malformed individual lines without aborting the entire stream
  */
 const parseJsonLinesStream = async (filePathOrStream, maxPreviewRows = 50) => {
   const fileStream = typeof filePathOrStream === 'string'
@@ -276,6 +316,7 @@ const parseJsonLinesStream = async (filePathOrStream, maxPreviewRows = 50) => {
   });
 
   let rowCount = 0;
+  let malformedLineCount = 0;
   const previewData = [];
   const columnStats = {};
 
@@ -313,8 +354,13 @@ const parseJsonLinesStream = async (filePathOrStream, maxPreviewRows = 50) => {
         }
       }
     } catch {
-      // Ignore unparseable line
+      malformedLineCount++;
+      // Skip corrupt individual line and continue
     }
+  }
+
+  if (rowCount === 0 && malformedLineCount > 0) {
+    throw new Error('Malformed JSON Lines file: None of the lines could be parsed as valid JSON.');
   }
 
   const columns = Object.values(columnStats).map(c => ({
@@ -329,72 +375,171 @@ const parseJsonLinesStream = async (filePathOrStream, maxPreviewRows = 50) => {
     columnCount: columns.length,
     columns,
     previewData,
-    delimiter: null
+    delimiter: null,
+    malformedLines: malformedLineCount
   };
 };
 
 /**
- * Fast preview reader: reads first 10-20 records directly from a stream
- * Destroys/closes the stream once limit is reached for memory and bandwidth efficiency
+ * High-performance paginated preview reader using Node.js Streams
+ * - Skips the first (page - 1) * limit rows without buffering them
+ * - Collects exactly 'limit' rows
+ * - Destroys the stream immediately as soon as the limit is satisfied
+ * - Handles malformed rows gracefully
+ * - Memory complexity: O(limit), regardless of file size (handles 10GB+ files cleanly)
+ *
+ * @param {Object} options
+ * @param {stream.Readable} options.stream - Readable stream from B2 or local file
+ * @param {string} options.fileType - 'csv' | 'json' | 'jsonl'
+ * @param {number} options.page - 1-based page number (default 1)
+ * @param {number} options.limit - Number of preview records requested (default 20)
+ * @param {string} options.delimiter - CSV separator (default ',')
  */
-const readPreviewRowsFromStream = async ({ stream, fileType, limit = 20, delimiter = ',' }) => {
+const readPreviewRowsFromStream = async ({
+  stream,
+  fileType = 'csv',
+  page = 1,
+  limit = 20,
+  delimiter = ','
+}) => {
   if (!stream) {
-    return { rows: [], columns: [], count: 0 };
+    return { rows: [], columns: [], count: 0, hasNextPage: false };
   }
 
-  const validLimit = Math.max(1, Math.min(limit, 100));
+  const validLimit = Math.max(1, Math.min(limit, 500));
+  const validPage = Math.max(1, page);
+  const skipCount = (validPage - 1) * validLimit;
+  const targetEndIndex = skipCount + validLimit;
 
   if (fileType === 'csv') {
     return new Promise((resolve, reject) => {
       const rows = [];
       const headers = [];
+      let currentRowIndex = 0;
+      let hasNextPage = false;
+      let isDone = false;
 
-      stream
-        .pipe(csv({
-          separator: delimiter || ',',
-          trim: true,
-          skipEmptyLines: true
-        }))
+      const csvParser = csv({
+        separator: delimiter || ',',
+        trim: true,
+        skipEmptyLines: true,
+        strict: false // Gracefully skip/tolerate irregular columns
+      });
+
+      const finish = () => {
+        if (isDone) return;
+        isDone = true;
+        try { stream.destroy(); } catch {}
+        try { csvParser.destroy(); } catch {}
+
+        const cols = headers.map(h => ({ name: h, dataType: 'string' }));
+        resolve({
+          rows,
+          columns: cols,
+          count: rows.length,
+          page: validPage,
+          limit: validLimit,
+          hasNextPage
+        });
+      };
+
+      csvParser
         .on('headers', (hdrs) => {
-          headers.push(...hdrs);
+          hdrs.forEach((h) => {
+            let clean = (h || '').trim();
+            if (clean.charCodeAt(0) === 0xFEFF) {
+              clean = clean.slice(1);
+            }
+            if (clean) headers.push(clean);
+          });
         })
         .on('data', (data) => {
-          if (rows.length < validLimit) {
+          if (isDone) return;
+          currentRowIndex++;
+
+          if (currentRowIndex > skipCount && rows.length < validLimit) {
             rows.push(data);
-          }
-          if (rows.length >= validLimit) {
-            stream.destroy();
-            resolve({
-              rows,
-              columns: headers.map(h => ({ name: h, dataType: 'string' })),
-              count: rows.length
-            });
+          } else if (currentRowIndex > targetEndIndex) {
+            hasNextPage = true;
+            finish();
           }
         })
         .on('end', () => {
-          resolve({
-            rows,
-            columns: headers.map(h => ({ name: h, dataType: 'string' })),
-            count: rows.length
-          });
+          finish();
         })
         .on('error', (err) => {
-          // If destroyed early, it might emit an error or close
+          // If rows were collected before malformed line, return them safely
           if (rows.length > 0) {
-            resolve({
-              rows,
-              columns: headers.map(h => ({ name: h, dataType: 'string' })),
-              count: rows.length
-            });
+            finish();
           } else {
-            reject(err);
+            isDone = true;
+            try { stream.destroy(); } catch {}
+            reject(new Error(`Malformed CSV format: ${err.message}`));
           }
         });
+
+      stream.on('error', (err) => {
+        if (rows.length > 0) {
+          finish();
+        } else {
+          isDone = true;
+          reject(new Error(`Stream error: ${err.message}`));
+        }
+      });
+
+      stream.pipe(csvParser);
     });
+  } else if (fileType === 'jsonl') {
+    // JSON Lines streaming pagination
+    const rl = readline.createInterface({
+      input: stream,
+      crlfDelay: Infinity
+    });
+
+    const rows = [];
+    let currentRowIndex = 0;
+    let hasNextPage = false;
+
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      try {
+        const record = JSON.parse(trimmed);
+        currentRowIndex++;
+
+        if (currentRowIndex > skipCount && rows.length < validLimit) {
+          rows.push(record);
+        } else if (currentRowIndex > targetEndIndex) {
+          hasNextPage = true;
+          rl.close();
+          stream.destroy();
+          break;
+        }
+      } catch {
+        // Tolerate single malformed line in JSONL
+      }
+    }
+
+    const cols = rows.length > 0 && typeof rows[0] === 'object'
+      ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
+      : [];
+
+    return {
+      rows,
+      columns: cols,
+      count: rows.length,
+      page: validPage,
+      limit: validLimit,
+      hasNextPage
+    };
   } else {
-    // JSON stream preview
+    // Standard JSON array streaming pagination
     return new Promise((resolve, reject) => {
       const rows = [];
+      let currentRowIndex = 0;
+      let hasNextPage = false;
+      let isDone = false;
 
       const pipeline = chain([
         stream,
@@ -402,44 +547,58 @@ const readPreviewRowsFromStream = async ({ stream, fileType, limit = 20, delimit
         streamArray()
       ]);
 
+      const finish = () => {
+        if (isDone) return;
+        isDone = true;
+        try { stream.destroy(); } catch {}
+        try { pipeline.destroy(); } catch {}
+
+        const cols = rows.length > 0 && typeof rows[0] === 'object'
+          ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
+          : [];
+
+        resolve({
+          rows,
+          columns: cols,
+          count: rows.length,
+          page: validPage,
+          limit: validLimit,
+          hasNextPage
+        });
+      };
+
       pipeline.on('data', ({ value }) => {
-        if (rows.length < validLimit) {
+        if (isDone) return;
+        currentRowIndex++;
+
+        if (currentRowIndex > skipCount && rows.length < validLimit) {
           rows.push(value);
-        }
-        if (rows.length >= validLimit) {
-          pipeline.destroy();
-          const cols = rows.length > 0 && typeof rows[0] === 'object'
-            ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
-            : [];
-          resolve({
-            rows,
-            columns: cols,
-            count: rows.length
-          });
+        } else if (currentRowIndex > targetEndIndex) {
+          hasNextPage = true;
+          finish();
         }
       });
 
       pipeline.on('end', () => {
-        const cols = rows.length > 0 && typeof rows[0] === 'object'
-          ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
-          : [];
-        resolve({
-          rows,
-          columns: cols,
-          count: rows.length
-        });
+        finish();
       });
 
       pipeline.on('error', (err) => {
         if (rows.length > 0) {
-          const cols = Object.keys(rows[0] || {}).map(k => ({ name: k, dataType: typeof rows[0][k] }));
-          resolve({
-            rows,
-            columns: cols,
-            count: rows.length
-          });
+          finish();
         } else {
-          reject(err);
+          isDone = true;
+          try { stream.destroy(); } catch {}
+          reject(new Error(`Malformed JSON file: ${err.message}`));
+        }
+      });
+
+      stream.on('error', (err) => {
+        if (rows.length > 0) {
+          finish();
+        } else {
+          isDone = true;
+          reject(new Error(`Stream error: ${err.message}`));
         }
       });
     });
@@ -449,6 +608,7 @@ const readPreviewRowsFromStream = async ({ stream, fileType, limit = 20, delimit
 module.exports = {
   parseCsvStream,
   parseJsonStream,
+  parseJsonLinesStream,
   detectDelimiter,
   inferPrimitiveType,
   resolveDominantType,
