@@ -40,8 +40,13 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Session expiration / unauthorized
-    if (error.response && error.response.status === 401) {
+    // Session expiration / unauthorized on protected endpoints
+    if (
+      error.response &&
+      error.response.status === 401 &&
+      !error.config?.url?.includes('/auth/login') &&
+      !error.config?.url?.includes('/auth/register')
+    ) {
       tokenService.clearTokens();
       // Dispatch a custom event so React can react without a hard page reload
       window.dispatchEvent(new CustomEvent('nexora:session-expired'));

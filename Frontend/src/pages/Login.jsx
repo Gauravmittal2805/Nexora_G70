@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import Alert from '../components/common/Alert';
+import NexoraLogo from '../components/common/NexoraLogo';
 import { validateEmail, validatePassword } from '../utils/validation';
 
 const Login = () => {
@@ -148,10 +149,12 @@ const Login = () => {
       <div className="lg:col-span-5 px-6 py-5 sm:px-8 sm:py-6 flex flex-col justify-between bg-gradient-to-b from-[#fafbfa] via-white to-[#fef9c3]/20 h-full overflow-hidden">
         <div>
           {/* Brand Pill Badge */}
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-slate-800 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span className="tracking-tight">Nexora</span>
-          </div>
+          <Link
+            to="/"
+            className="inline-flex items-center px-3 py-1 rounded-full bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200/80 transition-colors"
+          >
+            <NexoraLogo size="xs" theme="light" badgeText="AI" />
+          </Link>
 
           {/* Heading & Subtitle - Larger & prominent */}
           <div className="mt-3.5 mb-4">
@@ -466,7 +469,7 @@ const Login = () => {
               {activeTab === 'pipelines' && (
                 <div className="space-y-1.5 animate-fade-in">
                   <div className="flex items-center justify-between text-[11px] font-semibold text-amber-200">
-                    <span>Customer_Churn_Inference_v3</span>
+                    <span>Tabular_Stream_Engine</span>
                     <span className="bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full text-[10px]">
                       Operational
                     </span>
@@ -475,7 +478,7 @@ const Login = () => {
                     <div className="bg-amber-400 h-full rounded-full w-4/5 animate-pulse" />
                   </div>
                   <p className="text-[10px] text-white/70">
-                    4,280 samples preprocessed • Ready for batch evaluation
+                    Awaiting tabular dataset upload • Ready for real-time inference
                   </p>
                 </div>
               )}

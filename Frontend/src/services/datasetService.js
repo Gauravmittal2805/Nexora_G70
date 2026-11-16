@@ -6,72 +6,8 @@
 
 import api from './api';
 
-// Initial preloaded datasets so user can test UI immediately
-const INITIAL_DATASETS = [
-  {
-    id: 'ds-churn-101',
-    name: 'Customer_Churn_Analysis.csv',
-    description: 'Telecom customer behavior and subscription dataset for churn prediction modeling.',
-    format: 'CSV',
-    sizeBytes: 142850,
-    rowCount: 2500,
-    columnCount: 8,
-    uploadedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    status: 'Ready',
-    tags: ['Telecom', 'Classification', 'Tabular'],
-    columns: [
-      { name: 'CustomerID', type: 'String', missingCount: 0 },
-      { name: 'Age', type: 'Integer', missingCount: 0 },
-      { name: 'Gender', type: 'Categorical', missingCount: 0 },
-      { name: 'Tenure_Months', type: 'Integer', missingCount: 2 },
-      { name: 'Monthly_Charges', type: 'Float', missingCount: 0 },
-      { name: 'Total_Charges', type: 'Float', missingCount: 5 },
-      { name: 'Contract_Type', type: 'Categorical', missingCount: 0 },
-      { name: 'Churn', type: 'Boolean', missingCount: 0 },
-    ],
-    sampleRows: [
-      { CustomerID: 'CUST-7021', Age: 34, Gender: 'Female', Tenure_Months: 12, Monthly_Charges: 65.40, Total_Charges: 784.80, Contract_Type: 'Month-to-month', Churn: 'No' },
-      { CustomerID: 'CUST-8842', Age: 52, Gender: 'Male', Tenure_Months: 48, Monthly_Charges: 98.20, Total_Charges: 4713.60, Contract_Type: 'Two year', Churn: 'No' },
-      { CustomerID: 'CUST-1094', Age: 29, Gender: 'Female', Tenure_Months: 3, Monthly_Charges: 79.85, Total_Charges: 239.55, Contract_Type: 'Month-to-month', Churn: 'Yes' },
-      { CustomerID: 'CUST-4501', Age: 41, Gender: 'Male', Tenure_Months: 24, Monthly_Charges: 54.10, Total_Charges: 1298.40, Contract_Type: 'One year', Churn: 'No' },
-      { CustomerID: 'CUST-9018', Age: 63, Gender: 'Female', Tenure_Months: 8, Monthly_Charges: 104.90, Total_Charges: 839.20, Contract_Type: 'Month-to-month', Churn: 'Yes' },
-      { CustomerID: 'CUST-2231', Age: 38, Gender: 'Male', Tenure_Months: 36, Monthly_Charges: 45.00, Total_Charges: 1620.00, Contract_Type: 'One year', Churn: 'No' },
-      { CustomerID: 'CUST-3189', Age: 47, Gender: 'Female', Tenure_Months: 60, Monthly_Charges: 112.50, Total_Charges: 6750.00, Contract_Type: 'Two year', Churn: 'No' },
-      { CustomerID: 'CUST-5512', Age: 23, Gender: 'Male', Tenure_Months: 2, Monthly_Charges: 85.30, Total_Charges: 170.60, Contract_Type: 'Month-to-month', Churn: 'Yes' },
-      { CustomerID: 'CUST-6043', Age: 31, Gender: 'Female', Tenure_Months: 18, Monthly_Charges: 70.15, Total_Charges: 1262.70, Contract_Type: 'Month-to-month', Churn: 'No' },
-      { CustomerID: 'CUST-7789', Age: 56, Gender: 'Male', Tenure_Months: 42, Monthly_Charges: 93.00, Total_Charges: 3906.00, Contract_Type: 'One year', Churn: 'No' },
-    ],
-  },
-  {
-    id: 'ds-housing-202',
-    name: 'Housing_Price_Index_2025.csv',
-    description: 'Metropolitan residential real estate sales records with structural and location features.',
-    format: 'CSV',
-    sizeBytes: 284910,
-    rowCount: 5400,
-    columnCount: 7,
-    uploadedAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    status: 'Ready',
-    tags: ['Real Estate', 'Regression', 'Geo'],
-    columns: [
-      { name: 'Property_ID', type: 'String', missingCount: 0 },
-      { name: 'Square_Feet', type: 'Integer', missingCount: 0 },
-      { name: 'Bedrooms', type: 'Integer', missingCount: 0 },
-      { name: 'Bathrooms', type: 'Float', missingCount: 1 },
-      { name: 'Neighborhood', type: 'Categorical', missingCount: 0 },
-      { name: 'Year_Built', type: 'Integer', missingCount: 0 },
-      { name: 'Price_USD', type: 'Float', missingCount: 0 },
-    ],
-    sampleRows: [
-      { Property_ID: 'PROP-1001', Square_Feet: 1850, Bedrooms: 3, Bathrooms: 2.0, Neighborhood: 'Downtown', Year_Built: 2018, Price_USD: 425000 },
-      { Property_ID: 'PROP-1002', Square_Feet: 2400, Bedrooms: 4, Bathrooms: 2.5, Neighborhood: 'Suburbs North', Year_Built: 2012, Price_USD: 510000 },
-      { Property_ID: 'PROP-1003', Square_Feet: 1200, Bedrooms: 2, Bathrooms: 1.0, Neighborhood: 'East Bay', Year_Built: 1998, Price_USD: 295000 },
-      { Property_ID: 'PROP-1004', Square_Feet: 3100, Bedrooms: 5, Bathrooms: 3.5, Neighborhood: 'West Hills', Year_Built: 2021, Price_USD: 749000 },
-      { Property_ID: 'PROP-1005', Square_Feet: 1650, Bedrooms: 3, Bathrooms: 2.0, Neighborhood: 'Midtown', Year_Built: 2005, Price_USD: 380000 },
-      { Property_ID: 'PROP-1006', Square_Feet: 2150, Bedrooms: 3, Bathrooms: 2.5, Neighborhood: 'Suburbs North', Year_Built: 2016, Price_USD: 460000 },
-    ],
-  },
-];
+// Initial empty catalog - strictly real datasets uploaded by user
+const INITIAL_DATASETS = [];
 
 const STORAGE_KEY = 'nexora_datasets_catalog';
 
@@ -274,8 +210,9 @@ export const datasetService = {
   fetchDatasets: async () => {
     try {
       const res = await api.get('/datasets');
-      if (res.data && Array.isArray(res.data.datasets)) {
-        return res.data.datasets;
+      const list = res.data?.data || res.data?.datasets;
+      if (Array.isArray(list)) {
+        return list;
       }
       return datasetService.getDatasets();
     } catch {
@@ -284,23 +221,39 @@ export const datasetService = {
   },
 
   /**
-   * Get all datasets from storage (with defaults fallback)
+   * Get all datasets from storage (fresh and clean, no mock/fake datasets)
    */
   getDatasets: () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out legacy demo preloaded datasets
+          const demoIds = ['ds-churn-101', 'ds-housing-202'];
+          const realOnly = parsed.filter((d) => !demoIds.includes(d.id));
+          if (realOnly.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(realOnly));
+          }
+          return realOnly;
         }
       }
-      // Initialize with defaults
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DATASETS));
-      return INITIAL_DATASETS;
+      return [];
     } catch {
-      return INITIAL_DATASETS;
+      return [];
     }
+  },
+
+  /**
+   * Remove all datasets from local storage
+   */
+  clearAllDatasets: () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    return [];
   },
 
   /**
