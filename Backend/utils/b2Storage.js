@@ -3,29 +3,41 @@ const path = require('path');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { getS3Client, isB2Configured } = require('../config/s3Client');
+const {
+  getS3Client,
+  isB2Configured,
+  getB2BucketName,
+  getB2Region,
+  getB2Endpoint,
+  verifyB2Connection
+} = require('../config/s3Client');
 
-// Local uploads directory fallback
+// Local uploads directory fallback for offline development / testing
 const LOCAL_STORAGE_DIR = path.join(__dirname, '..', 'uploads', 'datasets');
 if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
   fs.mkdirSync(LOCAL_STORAGE_DIR, { recursive: true });
 }
 
 /**
- * Upload a dataset file stream to Backblaze B2 or local storage
+ * Upload a dataset file stream to Backblaze B2 bucket using AWS S3 SDK
+ * Falls back to local storage when B2 credentials are not configured
  */
 const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
+  const bucketName = getB2BucketName();
+  const region = getB2Region();
+
   if (isB2Configured()) {
     const s3Client = getS3Client();
     const fileStream = fs.createReadStream(filePath);
 
+    // Use AWS SDK lib-storage Upload for managed multipart uploads
     const parallelUpload = new Upload({
       client: s3Client,
       params: {
-        Bucket: process.env.B2_BUCKET_NAME,
+        Bucket: bucketName,
         Key: key,
         Body: fileStream,
-        ContentType: mimeType
+        ContentType: mimeType || (key.endsWith('.json') ? 'application/json' : 'text/csv')
       },
       partSize: 5 * 1024 * 1024, // 5MB part size for S3 multipart
       queueSize: 4
@@ -33,20 +45,21 @@ const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
 
     const result = await parallelUpload.done();
 
+    // Generate storage URL
     const storageUrl = process.env.B2_PUBLIC_URL_PREFIX
-      ? `${process.env.B2_PUBLIC_URL_PREFIX}/${key}`
-      : `https://s3.${process.env.B2_REGION || 'us-west-004'}.backblazeb2.com/${process.env.B2_BUCKET_NAME}/${key}`;
+      ? `${process.env.B2_PUBLIC_URL_PREFIX.replace(/\/+$/, '')}/${key}`
+      : `https://s3.${region}.backblazeb2.com/${bucketName}/${key}`;
 
     return {
       provider: 'backblaze_b2',
-      bucket: process.env.B2_BUCKET_NAME,
+      bucket: bucketName,
       key,
       eTag: result.ETag || null,
       localPath: null,
       storageUrl
     };
   } else {
-    // Local storage fallback for dev/testing when B2 keys are not yet added
+    // Local storage fallback for dev/testing when B2 keys are not yet configured
     const destFileName = path.basename(key);
     const destPath = path.join(LOCAL_STORAGE_DIR, destFileName);
     await fs.promises.copyFile(filePath, destPath);
@@ -63,13 +76,45 @@ const uploadDatasetFile = async ({ filePath, key, mimeType }) => {
 };
 
 /**
+ * Retrieve a readable stream for a dataset file from Backblaze B2 (or local file)
+ * Used to stream-read CSV/JSON records for preview without buffering whole files in memory
+ */
+const getDatasetFileStream = async ({ provider, bucket, key, localPath }) => {
+  if (provider === 'backblaze_b2' && isB2Configured()) {
+    const s3Client = getS3Client();
+    const command = new GetObjectCommand({
+      Bucket: bucket || getB2BucketName(),
+      Key: key
+    });
+
+    const response = await s3Client.send(command);
+    return response.Body; // Node.js Readable stream
+  }
+
+  // Check local file path fallback
+  if (localPath && fs.existsSync(localPath)) {
+    return fs.createReadStream(localPath);
+  }
+
+  // Also check if stored in LOCAL_STORAGE_DIR by key's basename
+  if (key) {
+    const fallbackPath = path.join(LOCAL_STORAGE_DIR, path.basename(key));
+    if (fs.existsSync(fallbackPath)) {
+      return fs.createReadStream(fallbackPath);
+    }
+  }
+
+  return null;
+};
+
+/**
  * Generate a pre-signed download URL or local download URL
  */
 const getDownloadUrl = async ({ provider, bucket, key, localPath, expiresIn = 300 }) => {
   if (provider === 'backblaze_b2' && isB2Configured()) {
     const s3Client = getS3Client();
     const command = new GetObjectCommand({
-      Bucket: bucket || process.env.B2_BUCKET_NAME,
+      Bucket: bucket || getB2BucketName(),
       Key: key
     });
 
@@ -80,9 +125,8 @@ const getDownloadUrl = async ({ provider, bucket, key, localPath, expiresIn = 30
       provider: 'backblaze_b2'
     };
   } else {
-    // Return relative API download endpoint
     return {
-      downloadUrl: `/api/datasets/file/${encodeURIComponent(key)}`,
+      downloadUrl: `/uploads/datasets/${encodeURIComponent(path.basename(key || localPath || ''))}`,
       expiresInSeconds: null,
       provider: 'local'
     };
@@ -96,12 +140,19 @@ const deleteDatasetFile = async ({ provider, bucket, key, localPath }) => {
   try {
     if (provider === 'backblaze_b2' && isB2Configured()) {
       const s3Client = getS3Client();
-      await s3Client.send(new DeleteObjectCommand({
-        Bucket: bucket || process.env.B2_BUCKET_NAME,
-        Key: key
-      }));
+      await s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: bucket || getB2BucketName(),
+          Key: key
+        })
+      );
     } else if (localPath && fs.existsSync(localPath)) {
       await fs.promises.unlink(localPath);
+    } else if (key) {
+      const fallbackPath = path.join(LOCAL_STORAGE_DIR, path.basename(key));
+      if (fs.existsSync(fallbackPath)) {
+        await fs.promises.unlink(fallbackPath);
+      }
     }
     return true;
   } catch (error) {
@@ -112,7 +163,9 @@ const deleteDatasetFile = async ({ provider, bucket, key, localPath }) => {
 
 module.exports = {
   uploadDatasetFile,
+  getDatasetFileStream,
   getDownloadUrl,
   deleteDatasetFile,
+  verifyB2Connection,
   LOCAL_STORAGE_DIR
 };

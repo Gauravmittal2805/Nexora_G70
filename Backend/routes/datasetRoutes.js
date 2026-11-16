@@ -1,18 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const { handleUpload } = require('../middleware/uploadMiddleware');
-const { protect } = require('../middleware/authMiddleware');
+const { optionalProtect } = require('../middleware/authMiddleware');
 const {
   uploadDataset,
   getDatasets,
   getDatasetById,
   getDatasetPreview,
   getDatasetDownloadUrl,
-  deleteDataset
+  deleteDataset,
+  getDatasetMapping,
+  saveDatasetMapping
 } = require('../controllers/datasetController');
 
-// All dataset routes require authentication
-router.use(protect);
+// All dataset routes use optionalProtect: attaches req.user if JWT Bearer token is provided
+router.use(optionalProtect);
 
 // @route   POST /api/datasets/upload
 router.post('/upload', handleUpload, uploadDataset);
@@ -31,5 +33,11 @@ router.get('/:id/download', getDatasetDownloadUrl);
 
 // @route   DELETE /api/datasets/:id
 router.delete('/:id', deleteDataset);
+
+// @route   GET /api/datasets/:id/mapping
+router.get('/:id/mapping', getDatasetMapping);
+
+// @route   POST /api/datasets/:id/mapping
+router.post('/:id/mapping', saveDatasetMapping);
 
 module.exports = router;

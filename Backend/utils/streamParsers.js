@@ -4,7 +4,6 @@ const csv = require('csv-parser');
 const { chain } = require('stream-chain');
 const { parser } = require('stream-json');
 const { streamArray } = require('stream-json/streamers/StreamArray');
-const { streamValues } = require('stream-json/streamers/StreamValues');
 
 /**
  * Infer primitive data type of a value
@@ -43,47 +42,63 @@ const resolveDominantType = (typesSet) => {
 };
 
 /**
- * Detect CSV delimiter from the first line (comma, semicolon, tab, pipe)
+ * Detect CSV delimiter from the first line of a file (comma, semicolon, tab, pipe)
  */
 const detectDelimiter = async (filePath) => {
-  const stream = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 1024 });
-  let firstLine = '';
+  try {
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 1024 });
+    let firstLine = '';
 
-  for await (const chunk of stream) {
-    const newlineIndex = chunk.indexOf('\n');
-    if (newlineIndex !== -1) {
-      firstLine += chunk.substring(0, newlineIndex);
-      stream.destroy();
-      break;
+    for await (const chunk of stream) {
+      const newlineIndex = chunk.indexOf('\n');
+      if (newlineIndex !== -1) {
+        firstLine += chunk.substring(0, newlineIndex);
+        stream.destroy();
+        break;
+      }
+      firstLine += chunk;
+      if (firstLine.length > 4096) {
+        stream.destroy();
+        break;
+      }
     }
-    firstLine += chunk;
-    if (firstLine.length > 4096) {
-      stream.destroy();
-      break;
+
+    const delimiters = [',', ';', '\t', '|'];
+    let bestDelimiter = ',';
+    let maxCount = -1;
+
+    for (const delim of delimiters) {
+      const count = (firstLine.match(new RegExp(`\\${delim}`, 'g')) || []).length;
+      if (count > maxCount) {
+        maxCount = count;
+        bestDelimiter = delim;
+      }
     }
+
+    return bestDelimiter;
+  } catch {
+    return ',';
   }
-
-  const delimiters = [',', ';', '\t', '|'];
-  let bestDelimiter = ',';
-  let maxCount = -1;
-
-  for (const delim of delimiters) {
-    const count = (firstLine.match(new RegExp(`\\${delim}`, 'g')) || []).length;
-    if (count > maxCount) {
-      maxCount = count;
-      bestDelimiter = delim;
-    }
-  }
-
-  return bestDelimiter;
 };
 
 /**
- * Parse a CSV file via Node.js Stream
+ * Parse a CSV file or readable stream
+ * @param {string|stream.Readable} filePathOrStream
+ * @param {number} maxPreviewRows (default 50 for full parse, 10-20 for preview)
+ * @param {string} customDelimiter
  */
-const parseCsvStream = async (filePath, maxPreviewRows = 50) => {
-  const delimiter = await detectDelimiter(filePath);
-  const readableStream = fs.createReadStream(filePath);
+const parseCsvStream = async (filePathOrStream, maxPreviewRows = 50, customDelimiter = null) => {
+  let readableStream;
+  let delimiter = customDelimiter || ',';
+
+  if (typeof filePathOrStream === 'string') {
+    if (!customDelimiter) {
+      delimiter = await detectDelimiter(filePathOrStream);
+    }
+    readableStream = fs.createReadStream(filePathOrStream);
+  } else {
+    readableStream = filePathOrStream;
+  }
 
   return new Promise((resolve, reject) => {
     let rowCount = 0;
@@ -98,13 +113,15 @@ const parseCsvStream = async (filePath, maxPreviewRows = 50) => {
       }))
       .on('headers', (headers) => {
         headers.forEach((header) => {
-          const cleanHeader = header.trim();
-          columnStats[cleanHeader] = {
-            name: cleanHeader,
-            nullCount: 0,
-            types: new Set(),
-            sampleValues: []
-          };
+          const cleanHeader = (header || '').trim();
+          if (cleanHeader) {
+            columnStats[cleanHeader] = {
+              name: cleanHeader,
+              nullCount: 0,
+              types: new Set(),
+              sampleValues: []
+            };
+          }
         });
       })
       .on('data', (row) => {
@@ -114,7 +131,9 @@ const parseCsvStream = async (filePath, maxPreviewRows = 50) => {
         }
 
         for (const [col, val] of Object.entries(row)) {
-          const cleanCol = col.trim();
+          const cleanCol = (col || '').trim();
+          if (!cleanCol) continue;
+
           if (!columnStats[cleanCol]) {
             columnStats[cleanCol] = {
               name: cleanCol,
@@ -159,19 +178,23 @@ const parseCsvStream = async (filePath, maxPreviewRows = 50) => {
 
 /**
  * Parse JSON or JSON Lines (.json / .jsonl) via Node.js Stream
+ * @param {string|stream.Readable} filePathOrStream
+ * @param {boolean} isJsonLines
+ * @param {number} maxPreviewRows
  */
-const parseJsonStream = async (filePath, isJsonLines = false, maxPreviewRows = 50) => {
+const parseJsonStream = async (filePathOrStream, isJsonLines = false, maxPreviewRows = 50) => {
   if (isJsonLines) {
-    return parseJsonLinesStream(filePath, maxPreviewRows);
+    return parseJsonLinesStream(filePathOrStream, maxPreviewRows);
   }
 
-  // Attempt streaming JSON array first
+  const readableStream = typeof filePathOrStream === 'string'
+    ? fs.createReadStream(filePathOrStream)
+    : filePathOrStream;
+
   return new Promise((resolve, reject) => {
-    const readableStream = fs.createReadStream(filePath);
     let rowCount = 0;
     const previewData = [];
     const columnStats = {};
-    let isArrayFormat = true;
 
     const pipeline = chain([
       readableStream,
@@ -227,10 +250,14 @@ const parseJsonStream = async (filePath, isJsonLines = false, maxPreviewRows = 5
     });
 
     pipeline.on('error', (err) => {
-      // Fallback: If not standard array of objects, parse as JSON Lines
-      parseJsonLinesStream(filePath, maxPreviewRows)
-        .then(resolve)
-        .catch(() => reject(new Error(`JSON Parsing failed: ${err.message}`)));
+      // If parsing as JSON array fails and input is a filePath, fallback to JSON Lines
+      if (typeof filePathOrStream === 'string') {
+        parseJsonLinesStream(filePathOrStream, maxPreviewRows)
+          .then(resolve)
+          .catch(() => reject(new Error(`JSON Parsing failed: ${err.message}`)));
+      } else {
+        reject(new Error(`JSON Parsing failed: ${err.message}`));
+      }
     });
   });
 };
@@ -238,8 +265,11 @@ const parseJsonStream = async (filePath, isJsonLines = false, maxPreviewRows = 5
 /**
  * Parse JSON Lines (.jsonl / NDJSON) line by line
  */
-const parseJsonLinesStream = async (filePath, maxPreviewRows = 50) => {
-  const fileStream = fs.createReadStream(filePath);
+const parseJsonLinesStream = async (filePathOrStream, maxPreviewRows = 50) => {
+  const fileStream = typeof filePathOrStream === 'string'
+    ? fs.createReadStream(filePathOrStream)
+    : filePathOrStream;
+
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity
@@ -283,7 +313,7 @@ const parseJsonLinesStream = async (filePath, maxPreviewRows = 50) => {
         }
       }
     } catch {
-      // Ignore unparseable individual line in jsonl
+      // Ignore unparseable line
     }
   }
 
@@ -303,10 +333,124 @@ const parseJsonLinesStream = async (filePath, maxPreviewRows = 50) => {
   };
 };
 
+/**
+ * Fast preview reader: reads first 10-20 records directly from a stream
+ * Destroys/closes the stream once limit is reached for memory and bandwidth efficiency
+ */
+const readPreviewRowsFromStream = async ({ stream, fileType, limit = 20, delimiter = ',' }) => {
+  if (!stream) {
+    return { rows: [], columns: [], count: 0 };
+  }
+
+  const validLimit = Math.max(1, Math.min(limit, 100));
+
+  if (fileType === 'csv') {
+    return new Promise((resolve, reject) => {
+      const rows = [];
+      const headers = [];
+
+      stream
+        .pipe(csv({
+          separator: delimiter || ',',
+          trim: true,
+          skipEmptyLines: true
+        }))
+        .on('headers', (hdrs) => {
+          headers.push(...hdrs);
+        })
+        .on('data', (data) => {
+          if (rows.length < validLimit) {
+            rows.push(data);
+          }
+          if (rows.length >= validLimit) {
+            stream.destroy();
+            resolve({
+              rows,
+              columns: headers.map(h => ({ name: h, dataType: 'string' })),
+              count: rows.length
+            });
+          }
+        })
+        .on('end', () => {
+          resolve({
+            rows,
+            columns: headers.map(h => ({ name: h, dataType: 'string' })),
+            count: rows.length
+          });
+        })
+        .on('error', (err) => {
+          // If destroyed early, it might emit an error or close
+          if (rows.length > 0) {
+            resolve({
+              rows,
+              columns: headers.map(h => ({ name: h, dataType: 'string' })),
+              count: rows.length
+            });
+          } else {
+            reject(err);
+          }
+        });
+    });
+  } else {
+    // JSON stream preview
+    return new Promise((resolve, reject) => {
+      const rows = [];
+
+      const pipeline = chain([
+        stream,
+        parser(),
+        streamArray()
+      ]);
+
+      pipeline.on('data', ({ value }) => {
+        if (rows.length < validLimit) {
+          rows.push(value);
+        }
+        if (rows.length >= validLimit) {
+          pipeline.destroy();
+          const cols = rows.length > 0 && typeof rows[0] === 'object'
+            ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
+            : [];
+          resolve({
+            rows,
+            columns: cols,
+            count: rows.length
+          });
+        }
+      });
+
+      pipeline.on('end', () => {
+        const cols = rows.length > 0 && typeof rows[0] === 'object'
+          ? Object.keys(rows[0]).map(k => ({ name: k, dataType: typeof rows[0][k] }))
+          : [];
+        resolve({
+          rows,
+          columns: cols,
+          count: rows.length
+        });
+      });
+
+      pipeline.on('error', (err) => {
+        if (rows.length > 0) {
+          const cols = Object.keys(rows[0] || {}).map(k => ({ name: k, dataType: typeof rows[0][k] }));
+          resolve({
+            rows,
+            columns: cols,
+            count: rows.length
+          });
+        } else {
+          reject(err);
+        }
+      });
+    });
+  }
+};
+
 module.exports = {
   parseCsvStream,
   parseJsonStream,
   detectDelimiter,
   inferPrimitiveType,
-  resolveDominantType
+  resolveDominantType,
+  readPreviewRowsFromStream
 };
