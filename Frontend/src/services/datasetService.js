@@ -697,7 +697,7 @@ export const datasetService = {
   },
 
   /**
-   * Get all datasets from storage (with defaults fallback)
+   * Get all datasets from storage (fresh and clean, no mock/fake datasets)
    */
   getDatasets: () => {
     try {
@@ -713,6 +713,7 @@ export const datasetService = {
     } catch {
       return INITIAL_DATASETS.map(normalizeDataset);
     }
+    return [];
   },
 
   /**

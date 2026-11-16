@@ -1,6 +1,7 @@
 import React from 'react';
-import { Sparkles, Heart, Shield, Activity, ExternalLink } from 'lucide-react';
+import { Heart, Shield, Activity, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import NexoraLogo from './common/NexoraLogo';
 
 const Footer = () => {
   return (
@@ -13,18 +14,8 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-8 pb-8 border-b border-slate-800/80">
           {/* Brand Info & Mission (Col 1 & 2) */}
           <div className="lg:col-span-2 space-y-3.5">
-            <Link to="/" className="inline-flex items-center space-x-2.5 group">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform duration-200">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div className="flex items-baseline space-x-1.5">
-                <span className="font-extrabold text-xl tracking-tight text-white">
-                  nexora
-                </span>
-                <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30">
-                  AI
-                </span>
-              </div>
+            <Link to="/" className="inline-flex items-center group">
+              <NexoraLogo size="md" />
             </Link>
             <p className="text-xs sm:text-sm text-slate-400 max-w-sm leading-relaxed">
               Autonomous enterprise tabular data ingestion, schema validation, and intelligent ML preprocessing platform built for modern engineering teams.

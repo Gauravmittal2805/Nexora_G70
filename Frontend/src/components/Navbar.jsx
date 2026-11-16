@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFirstName } from '../utils/userUtils';
+import NexoraLogo from './common/NexoraLogo';
 import {
   Sparkles,
   LogIn,
@@ -78,9 +79,9 @@ const Navbar = () => {
   const notifications = [
     {
       id: 1,
-      title: 'Dataset Ingestion Complete',
-      desc: 'Customer_Churn_Analysis.csv parsed with 2,500 rows.',
-      time: '10m ago',
+      title: 'Workspace Initialized',
+      desc: 'Platform stream engine active and ready for dataset uploads.',
+      time: 'Just now',
     },
     {
       id: 2,
@@ -105,130 +106,96 @@ const Navbar = () => {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-16 relative">
           {/* Left: Nexux-style Brand Logo */}
-          <div className="flex items-center space-x-7">
-            <Link to="/" className="flex items-center space-x-2.5 group">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:scale-105 transition-transform duration-200">
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex items-baseline space-x-1.5">
-                <span className="font-black text-xl tracking-tight text-white block leading-none">
-                  nexora
-                </span>
-                <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30">
-                  AI
-                </span>
-              </div>
+          <div className="flex items-center">
+            <Link to="/" className="flex items-center group">
+              <NexoraLogo size="md" />
             </Link>
-
-            {/* Desktop Navigation Links (Nexux Dark Aesthetic) */}
-            <div className="hidden lg:flex items-center space-x-1 pl-4 border-l border-slate-800">
-              <Link
-                to="/"
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  isActive('/') && location.pathname === '/'
-                    ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Home
-              </Link>
-
-              {isAuthenticated ? (
-                <>
-                  <Link
-                    to="/dashboard"
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                      location.pathname === '/dashboard'
-                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Dashboard</span>
-                  </Link>
-
-                  <Link
-                    to="/dashboard/datasets"
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                      location.pathname.startsWith('/dashboard/datasets')
-                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <Database className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Datasets</span>
-                  </Link>
-
-                  <Link
-                    to="/dashboard/pipelines"
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                      location.pathname.startsWith('/dashboard/pipelines')
-                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Pipelines</span>
-                  </Link>
-
-                  <Link
-                    to="/dashboard/models"
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                      location.pathname.startsWith('/dashboard/models')
-                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <Cpu className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Model Studio</span>
-                  </Link>
-
-                  <Link
-                    to="/dashboard/analytics"
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                      location.pathname.startsWith('/dashboard/analytics')
-                        ? 'text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                        : 'text-slate-300 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <BarChart3 className="w-3.5 h-3.5 text-pink-400" />
-                    <span>Analytics</span>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <a
-                    href="#tools"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
-                  >
-                    Tools
-                  </a>
-                  <a
-                    href="#pipeline"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
-                  >
-                    Our Services
-                  </a>
-                  <a
-                    href="#benchmarks"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
-                  >
-                    Benchmarks
-                  </a>
-                  <a
-                    href="#faq"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
-                  >
-                    FAQ
-                  </a>
-                </>
-              )}
-            </div>
           </div>
 
-          {/* Right Side Options & User Actions */}
+          {/* Center: Desktop Navigation Links (Centered in the Navbar) */}
+          <div className="hidden lg:flex items-center space-x-1.5 absolute left-1/2 -translate-x-1/2">
+            <Link
+              to="/"
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                isActive('/') && location.pathname === '/'
+                  ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-bold'
+                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              Home
+            </Link>
+
+            {isAuthenticated ? (
+              <>
+                <Link
+                  to="/dashboard"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                    location.pathname === '/dashboard'
+                      ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-bold'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Dashboard</span>
+                </Link>
+
+                <Link
+                  to="/dashboard/models"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                    location.pathname.startsWith('/dashboard/models')
+                      ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-bold'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Cpu className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Model Studio</span>
+                </Link>
+
+                <Link
+                  to="/dashboard/analytics"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                    location.pathname.startsWith('/dashboard/analytics')
+                      ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-bold'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Analytics</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <a
+                  href="#tools"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Tools
+                </a>
+                <a
+                  href="#pipeline"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Our Services
+                </a>
+                <a
+                  href="#benchmarks"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Benchmarks
+                </a>
+                <a
+                  href="#faq"
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  FAQ
+                </a>
+              </>
+            )}
+          </div>
+
+          {/* Right Side Options & User Actions (Kept exactly as requested) */}
           <div className="hidden md:flex items-center space-x-3">
             {isAuthenticated ? (
               <>
@@ -405,18 +372,18 @@ const Navbar = () => {
                 <span>Dashboard</span>
               </Link>
               <Link
-                to="/dashboard/datasets"
+                to="/dashboard/models"
                 className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
               >
-                <Database className="w-4 h-4 text-blue-400" />
-                <span>Datasets Catalog</span>
+                <Cpu className="w-4 h-4 text-purple-400" />
+                <span>Model Studio</span>
               </Link>
               <Link
-                to="/dashboard/pipelines"
+                to="/dashboard/analytics"
                 className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
               >
-                <GitBranch className="w-4 h-4 text-purple-400" />
-                <span>ML Pipelines</span>
+                <BarChart3 className="w-4 h-4 text-pink-400" />
+                <span>Analytics</span>
               </Link>
               <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
