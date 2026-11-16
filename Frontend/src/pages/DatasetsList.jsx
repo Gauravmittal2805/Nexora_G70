@@ -498,39 +498,9 @@ const DatasetsList = () => {
             className="text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             Retry
-      {datasets.length === 0 ? (
-        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-12 text-center">
-          <UploadCloud className="w-12 h-12 text-cyan-400 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No Datasets Ingested Yet</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-6">
-            All preloaded mock datasets have been removed. Upload a real CSV, TSV, or JSON file to start analyzing data.
-          </p>
-          <button
-            onClick={() => navigate('/dashboard/datasets/upload')}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Upload Your First Dataset</span>
           </button>
         </div>
-      ) : filteredDatasets.length === 0 ? (
-        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-12 text-center">
-          <Database className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No Datasets Found</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-6">
-            We couldn't find any datasets matching your search criteria.
-          </p>
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setSelectedFormat('ALL');
-            }}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all cursor-pointer"
-          >
-            <span>Clear Filters</span>
-          </button>
-        </div>
-      ) : null}
+      )}
 
       {/* Loading Skeleton State */}
       {isLoading ? (
