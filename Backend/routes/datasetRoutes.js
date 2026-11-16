@@ -7,6 +7,8 @@ const {
   getDatasets,
   getDatasetById,
   getDatasetPreview,
+  getFieldMapping,
+  saveFieldMapping,
   getDatasetDownloadUrl,
   deleteDataset
 } = require('../controllers/datasetController');
@@ -25,6 +27,12 @@ router.get('/:id', getDatasetById);
 
 // @route   GET /api/datasets/:id/preview
 router.get('/:id/preview', getDatasetPreview);
+
+// @route   GET /api/datasets/:id/mapping
+router.get('/:id/mapping', getFieldMapping);
+
+// @route   POST /api/datasets/:id/mapping
+router.post('/:id/mapping', saveFieldMapping);
 
 // @route   GET /api/datasets/:id/download
 router.get('/:id/download', getDatasetDownloadUrl);

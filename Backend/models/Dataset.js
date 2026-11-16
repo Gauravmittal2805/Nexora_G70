@@ -123,6 +123,14 @@ const datasetSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   }],
+  mapping: {
+    target: { type: String, default: '' },
+    id: { type: String, default: '' },
+    numerical: [{ type: String }],
+    categorical: [{ type: String }],
+    datetime: [{ type: String }],
+    ignored: [{ type: String }]
+  },
   createdAt: {
     type: Date,
     default: Date.now
