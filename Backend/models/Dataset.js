@@ -131,6 +131,10 @@ const datasetSchema = new mongoose.Schema({
     datetime: [{ type: String }],
     ignored: [{ type: String }]
   },
+  profile: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

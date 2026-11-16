@@ -659,6 +659,24 @@ export const datasetService = {
   },
 
   /**
+   * Fetch complete dataset profiling metrics (types, nulls, unique values, summary stats)
+   * GET /api/datasets/:id/profile
+   */
+  getDatasetProfile: async (id, { refresh = false } = {}) => {
+    try {
+      const url = `/datasets/${id}/profile${refresh ? "?refresh=true" : ""}`;
+      const res = await api.get(url);
+      if (res.data && res.data.success) {
+        return res.data;
+      }
+      return res.data;
+    } catch (err) {
+      console.warn(`Dataset profile API call failed for ${id}:`, err.message);
+      throw err;
+    }
+  },
+
+  /**
    * Get field mapping for dataset (from backend or local)
    */
   getFieldMapping: async (id) => {

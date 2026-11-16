@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const Dataset = require('../models/Dataset');
 const { parseCsvStream, parseJsonStream } = require('../utils/streamParsers');
 const { uploadDatasetFile, getDownloadUrl, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
+const { profileDataset, profileInMemoryRecords } = require('../utils/datasetProfiler');
 
 /**
  * Helper to find a dataset by either its custom datasetId (UUID) or Mongo _id
@@ -88,14 +89,23 @@ const uploadDataset = async (req, res, next) => {
       parseResult = await parseJsonStream(tempFilePath, fileType === 'jsonl', 50);
     }
 
-    // 2. Upload file to Backblaze B2 (or local fallback storage)
+    // 2. Perform deep dataset profiling (data types, missing/null counts, unique values)
+    let profileResult = null;
+    try {
+      profileResult = await profileDataset(tempFilePath, fileType);
+      profileResult.profiledAt = new Date();
+    } catch (profErr) {
+      console.warn('Initial profiling warning (will fallback on demand):', profErr.message);
+    }
+
+    // 3. Upload file to Backblaze B2 (or local fallback storage)
     const storageResult = await uploadDatasetFile({
       filePath: tempFilePath,
       key: storageKey,
       mimeType
     });
 
-    // 3. Compute heuristic default field mapping
+    // 4. Compute heuristic default field mapping
     const colNames = (parseResult.columns || []).map((c) => c.name);
     const targetGuess = colNames.find((n) => /churn|target|label|price|status|alert|fraud|outcome|class/i.test(n)) || '';
     const idGuess = colNames.find((n) => /id$|^id|_id$/i.test(n)) || '';
@@ -115,7 +125,7 @@ const uploadDataset = async (req, res, next) => {
       ignored: []
     };
 
-    // 4. Create Dataset document in MongoDB bound to req.user._id
+    // 5. Create Dataset document in MongoDB bound to req.user._id
     const dataset = await Dataset.create({
       datasetId,
       userId: req.user._id,
@@ -143,10 +153,11 @@ const uploadDataset = async (req, res, next) => {
       previewData: parseResult.previewData,
       tags,
       mapping: defaultMapping,
+      profile: profileResult,
       createdAt: new Date()
     });
 
-    // 5. Clean up temporary multer spool file
+    // 6. Clean up temporary multer spool file
     if (fs.existsSync(tempFilePath)) {
       await fs.promises.unlink(tempFilePath);
     }
@@ -395,6 +406,125 @@ const getDatasetPreview = async (req, res, next) => {
 };
 
 /**
+ * @desc    Get dataset profiling results (Data types, missing counts, unique values, stats)
+ * @route   GET /api/datasets/:id/profile
+ * @access  Private (Restricted to dataset owner)
+ */
+const getDatasetProfile = async (req, res, next) => {
+  try {
+    const dataset = await findUserDataset(req.params.id, req.user._id);
+
+    if (!dataset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dataset not found'
+      });
+    }
+
+    const forceRefresh = req.query.refresh === 'true' || req.query.recompute === 'true';
+
+    // If already profiled and no refresh is requested, return cached profile
+    if (dataset.profile && !forceRefresh) {
+      return res.status(200).json({
+        success: true,
+        datasetId: dataset.datasetId,
+        fileName: dataset.fileName,
+        name: dataset.name || dataset.fileName,
+        fileType: dataset.fileType,
+        fileSize: dataset.fileSize,
+        ...dataset.profile
+      });
+    }
+
+    // Compute profile from the dataset's stored file or preview data
+    let profileResult = null;
+    const localPath = dataset.storage?.localPath;
+
+    if (localPath && fs.existsSync(localPath)) {
+      profileResult = await profileDataset(localPath, dataset.fileType);
+    } else if (dataset.previewData && dataset.previewData.length > 0) {
+      profileResult = profileInMemoryRecords(dataset.previewData);
+    } else {
+      // Reconstruct fallback profile from metadata columns
+      const totalRecs = dataset.metadata?.rowCount || 0;
+      const cols = (dataset.metadata?.columns || []).map((c) => {
+        const nulls = c.nullCount || 0;
+        const nonNulls = Math.max(0, totalRecs - nulls);
+        const typeMap = {
+          number: 'Number',
+          boolean: 'Boolean',
+          date: 'Date',
+          string: 'String'
+        };
+        const resolvedType = typeMap[c.dataType] || 'String';
+        const sampleArr = c.sampleValues || [];
+
+        return {
+          name: c.name,
+          dataType: resolvedType,
+          totalRecords: totalRecs,
+          nonNullCount: nonNulls,
+          nullCount: nulls,
+          missingCount: nulls,
+          missingPercentage: totalRecs > 0 ? Number(((nulls / totalRecs) * 100).toFixed(2)) : 0,
+          distinctCount: sampleArr.length,
+          isUnique: totalRecs > 0 && sampleArr.length === totalRecs,
+          uniqueValues: sampleArr.slice(0, 50),
+          uniqueValuesCount: Math.min(sampleArr.length, 50),
+          hasMoreUniqueValues: sampleArr.length > 50,
+          stats: {},
+          sampleValues: sampleArr.slice(0, 5)
+        };
+      });
+
+      let totalMissing = 0;
+      const typeSummary = { String: 0, Number: 0, Boolean: 0, Date: 0 };
+      cols.forEach((col) => {
+        totalMissing += col.missingCount;
+        typeSummary[col.dataType] = (typeSummary[col.dataType] || 0) + 1;
+      });
+
+      profileResult = {
+        totalRecords: totalRecs,
+        totalColumns: cols.length,
+        columns: cols,
+        summary: {
+          totalRecords: totalRecs,
+          totalColumns: cols.length,
+          totalCells: totalRecs * cols.length,
+          missingCells: totalMissing,
+          overallMissingPercentage: totalRecs * cols.length > 0
+            ? Number(((totalMissing / (totalRecs * cols.length)) * 100).toFixed(2))
+            : 0,
+          columnDataTypes: typeSummary
+        }
+      };
+    }
+
+    // Persist computed profile to document
+    const finalProfile = {
+      ...profileResult,
+      profiledAt: new Date().toISOString()
+    };
+    dataset.profile = finalProfile;
+    await dataset.save();
+
+    return res.status(200).json({
+      success: true,
+      datasetId: dataset.datasetId,
+      fileName: dataset.fileName,
+      name: dataset.name || dataset.fileName,
+      fileType: dataset.fileType,
+      fileSize: dataset.fileSize,
+      ...finalProfile
+    });
+  } catch (error) {
+    console.error('Dataset Profile API Error:', error);
+    next(error);
+  }
+};
+
+/**
  * @desc    Get field mapping for dataset
  * @route   GET /api/datasets/:id/mapping
  * @access  Private (Restricted to dataset owner)
@@ -553,6 +683,7 @@ module.exports = {
   getDatasets,
   getDatasetById,
   getDatasetPreview,
+  getDatasetProfile,
   getFieldMapping,
   saveFieldMapping,
   getDatasetDownloadUrl,
