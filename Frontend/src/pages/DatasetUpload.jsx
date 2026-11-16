@@ -282,6 +282,7 @@ const DatasetUpload = () => {
             columns={parsedData.columns}
             rows={parsedData.rows}
             title={metadata.name || 'Dataset Preview'}
+            format={metadata.format || 'CSV'}
             totalRows={parsedData.totalRowsEstimated}
             fileSizeBytes={selectedFile?.size}
           />

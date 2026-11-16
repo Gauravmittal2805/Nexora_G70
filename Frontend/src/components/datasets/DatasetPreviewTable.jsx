@@ -11,6 +11,10 @@ import {
   Download,
   AlertTriangle,
   CheckCircle2,
+  X,
+  RefreshCw,
+  Loader2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { formatBytes } from '../../services/datasetService';
 
@@ -27,17 +31,22 @@ const DatasetPreviewTable = ({
   columns = [],
   rows = [],
   title = 'Dataset Preview',
+  format = 'CSV',
   totalRows = null,
   fileSizeBytes = null,
   showActions = true,
+  isLoading = false,
+  error = null,
+  onRetry = null,
+  onClose = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10); // Display 10–20 records
 
-  // Compute missing cells count across rows
+  // Compute missing cells count across columns
   const missingSummary = useMemo(() => {
     let missingTotal = 0;
     columns.forEach((col) => {
@@ -123,41 +132,131 @@ const DatasetPreviewTable = ({
     URL.revokeObjectURL(url);
   };
 
+  // 1. Loading State
+  if (isLoading) {
+    return (
+      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/30 p-8 shadow-xl space-y-6 text-slate-300 animate-pulse">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+            </div>
+            <div>
+              <div className="h-5 w-48 bg-slate-800 rounded-md mb-2" />
+              <div className="h-3 w-64 bg-slate-800/60 rounded-md" />
+            </div>
+          </div>
+          <div className="h-8 w-24 bg-slate-800 rounded-xl" />
+        </div>
+
+        {/* Skeleton table headers */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-6 gap-3 pb-3 border-b border-slate-800">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-7 bg-slate-800/80 rounded-lg" />
+            ))}
+          </div>
+          {/* Skeleton table rows */}
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="grid grid-cols-6 gap-3 py-2 border-b border-slate-900/60">
+              {[...Array(6)].map((_, j) => (
+                <div key={j} className="h-5 bg-slate-800/40 rounded" />
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <div className="h-4 w-40 bg-slate-800/60 rounded" />
+          <div className="h-8 w-32 bg-slate-800 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Error State
+  if (error) {
+    return (
+      <div className="bg-[#0a0f24] rounded-3xl border border-rose-500/40 p-8 shadow-xl text-center space-y-4">
+        <div className="w-14 h-14 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-400 flex items-center justify-center mx-auto">
+          <AlertTriangle className="w-7 h-7" />
+        </div>
+        <div className="max-w-md mx-auto space-y-1">
+          <h4 className="text-base font-bold text-white">Failed to Load Dataset Preview</h4>
+          <p className="text-xs text-rose-300 leading-relaxed">{error}</p>
+        </div>
+        <div className="flex items-center justify-center space-x-3 pt-2">
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry Preview</span>
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Empty State (No Columns / Zero Data)
   if (!columns || columns.length === 0) {
     return (
       <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-12 text-center text-slate-400">
         <TableIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
         <h4 className="text-base font-bold text-white">No Dataset Data Available</h4>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
           Upload a file or choose a sample dataset above to view live tabular records and column stats.
         </p>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="mt-4 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+          >
+            Dismiss
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 shadow-xl overflow-hidden flex flex-col text-slate-200">
+    <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/25 shadow-2xl overflow-hidden flex flex-col text-slate-200 animate-fade-in">
       {/* Top Header & Metrics Bar */}
       <div className="p-5 border-b border-slate-800 bg-[#070b1c]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-4 h-4" />
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">{title}</h3>
-                <p className="text-xs text-slate-400">
-                  Inspect inferred schema, data types, and preview rows before training.
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-base font-bold text-white truncate max-w-md">{title}</h3>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40 uppercase">
+                    {format}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Inspecting first {rows.length} tabular records & inferred data types
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Quick Metrics Badges */}
+          {/* Quick Metrics Badges & Close Button */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="px-3 py-1.5 rounded-xl bg-[#050814] border border-slate-800 flex items-center space-x-2">
-              <span className="text-[11px] font-semibold text-slate-400">Rows:</span>
+              <span className="text-[11px] font-semibold text-slate-400">Total Rows:</span>
               <span className="text-xs font-bold text-white">
                 {totalRows ? Number(totalRows).toLocaleString() : rows.length.toLocaleString()}
               </span>
@@ -187,15 +286,26 @@ const DatasetPreviewTable = ({
               {missingSummary > 0 ? (
                 <>
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-xs font-bold">{missingSummary} Missing Values</span>
+                  <span className="text-xs font-bold">{missingSummary} Missing</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-xs font-bold">Zero Null Values</span>
+                  <span className="text-xs font-bold">Zero Nulls</span>
                 </>
               )}
             </div>
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors ml-1"
+                title="Close Preview Table"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -211,26 +321,26 @@ const DatasetPreviewTable = ({
                 setCurrentPage(1);
               }}
               placeholder="Search in preview records..."
-              className="w-full text-xs bg-[#050814] text-white placeholder-slate-500 pl-9 pr-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 transition-all"
+              className="w-full text-xs bg-[#050814] text-white placeholder-slate-500 pl-9 pr-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 transition-all font-medium"
             />
           </div>
 
           <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-            {/* Page Size Selector */}
+            {/* Page Size Selector (10 or 20 records) */}
             <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-              <span>Show:</span>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <span>Rows / page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="bg-[#050814] border border-slate-800 rounded-lg px-2 py-1 text-xs font-medium text-white focus:outline-none focus:border-cyan-400"
+                className="bg-[#050814] border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-semibold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
               >
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
+                <option value={10}>10 records</option>
+                <option value={20}>20 records</option>
+                <option value={50}>50 records</option>
               </select>
             </div>
 
@@ -250,11 +360,11 @@ const DatasetPreviewTable = ({
       </div>
 
       {/* Tabular Data View */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[520px] scrollbar-thin scrollbar-thumb-slate-800">
         <table className="w-full text-left text-xs border-collapse">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-[#080d22] border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-              <th className="py-3 px-4 w-12 text-center text-slate-500 font-mono">#</th>
+              <th className="py-3 px-4 w-12 text-center text-slate-500 font-mono bg-[#080d22]">#</th>
               {columns.map((col) => {
                 const isSorted = sortColumn === col.name;
                 const typeStyle = TYPE_STYLES[col.type] || TYPE_STYLES.String;
@@ -263,7 +373,7 @@ const DatasetPreviewTable = ({
                   <th
                     key={col.name}
                     onClick={() => handleSort(col.name)}
-                    className="py-3 px-4 select-none cursor-pointer hover:bg-cyan-500/5 transition-colors whitespace-nowrap"
+                    className="py-3 px-4 select-none cursor-pointer hover:bg-cyan-500/5 transition-colors whitespace-nowrap bg-[#080d22]"
                   >
                     <div className="flex items-center justify-between space-x-2">
                       <div className="flex flex-col">
@@ -317,13 +427,23 @@ const DatasetPreviewTable = ({
                       return (
                         <td key={col.name} className="py-2.5 px-4 whitespace-nowrap">
                           {isEmpty ? (
-                            <span className="text-slate-600 italic font-sans text-[11px]">
+                            <span className="text-slate-600 italic font-sans text-[11px] bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-800/60">
                               null
                             </span>
                           ) : typeof val === 'number' ? (
                             <span className="text-cyan-300 font-semibold">{val}</span>
+                          ) : typeof val === 'boolean' ? (
+                            <span
+                              className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                                val
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}
+                            >
+                              {String(val)}
+                            </span>
                           ) : (
-                            <span className="truncate max-w-[200px] inline-block font-sans text-xs text-white">
+                            <span className="truncate max-w-[240px] inline-block font-sans text-xs text-white">
                               {String(val)}
                             </span>
                           )}
@@ -337,9 +457,17 @@ const DatasetPreviewTable = ({
               <tr>
                 <td
                   colSpan={columns.length + 1}
-                  className="py-10 text-center text-slate-500 font-sans"
+                  className="py-12 text-center text-slate-400 font-sans"
                 >
-                  No records match your search filter "{searchTerm}".
+                  <p className="text-sm font-semibold text-slate-300">
+                    No records match search filter "{searchTerm}"
+                  </p>
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="mt-2 text-xs font-bold text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    Clear Filter
+                  </button>
                 </td>
               </tr>
             )}
@@ -358,10 +486,10 @@ const DatasetPreviewTable = ({
           <span className="font-semibold text-white">
             {Math.min(startIndex + pageSize, totalItems)}
           </span>{' '}
-          of <span className="font-semibold text-white">{totalItems}</span> rows
+          of <span className="font-semibold text-white">{totalItems}</span> preview records
           {totalRows && totalRows > rows.length && (
             <span className="text-slate-500 text-[11px] ml-1">
-              (Previewing first {rows.length} records of {Number(totalRows).toLocaleString()})
+              (Previewing first {rows.length} records of {Number(totalRows).toLocaleString()} total rows)
             </span>
           )}
         </div>
@@ -370,7 +498,7 @@ const DatasetPreviewTable = ({
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={validCurrentPage <= 1}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             title="Previous Page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -381,7 +509,7 @@ const DatasetPreviewTable = ({
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={validCurrentPage >= totalPages}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             title="Next Page"
           >
             <ChevronRight className="w-4 h-4" />
