@@ -4,7 +4,7 @@ import tokenService from './tokenService';
 export const authService = {
   /**
    * Register a new user
-   * Sends POST to /api/auth/register
+   * Sends POST to /api/auth/register (saves directly to MongoDB Nexora database)
    * Does NOT auto-login, enabling the user to explicitly log in next.
    * @param {Object} userData - { name, email, password }
    */
@@ -12,7 +12,6 @@ export const authService = {
     try {
       const payload = {
         name,
-        username: name.toLowerCase().replace(/\s+/g, '_'),
         email,
         password,
       };
@@ -28,29 +27,15 @@ export const authService = {
         user,
       };
     } catch (error) {
-      // If backend responded with 400 or other client error (e.g. duplicate user, invalid format),
-      // rethrow so the form shows the backend's validation message
-      if (error.status && error.status !== 404 && error.status < 500) {
-        throw error;
-      }
-
-      // If backend server is unreachable or offline, provide graceful simulated success
-      if (
-        error.message?.includes('Network Error') ||
-        error.code === 'ERR_NETWORK' ||
-        error.originalError?.code === 'ECONNREFUSED' ||
-        error.status === 404 ||
-        error.status >= 500
-      ) {
-        console.warn('Backend server unreachable, simulating successful registration:', error.message);
-        const demoUser = { _id: 'usr_' + Date.now(), name, email, createdAt: new Date().toISOString() };
-        return {
-          success: true,
-          message: 'Account created successfully! Please sign in with your credentials.',
-          user: demoUser,
-        };
-      }
-      throw error;
+      // Re-throw with clean message so user sees true validation / backend errors
+      const message =
+        error.data?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        'Registration failed. Please check server connection.';
+      const err = new Error(message);
+      err.status = error.status || error.response?.status;
+      throw err;
     }
   },
 
@@ -92,37 +77,14 @@ export const authService = {
         token,
       };
     } catch (error) {
-      // If backend responded with 400 or 401 (e.g. invalid credentials), rethrow with backend message
-      if (error.status && error.status !== 404 && error.status < 500) {
-        throw error;
-      }
-
-      // If backend server is offline or unreachable, provide graceful fallback session
-      if (
-        error.message?.includes('Network Error') ||
-        error.code === 'ERR_NETWORK' ||
-        error.originalError?.code === 'ECONNREFUSED' ||
-        error.status === 404 ||
-        error.status >= 500
-      ) {
-        console.warn('Backend server unreachable, activating local demo JWT session for login preview:', error.message);
-        const demoToken = 'demo-jwt-' + btoa(JSON.stringify({ email, exp: Math.floor(Date.now() / 1000) + 86400 }));
-        const demoUser = {
-          _id: 'usr_' + Date.now(),
-          name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          email,
-          createdAt: new Date().toISOString(),
-        };
-        tokenService.setTokens({ token: demoToken, user: demoUser, rememberMe });
-        return {
-          success: true,
-          message: 'Login successful! Redirecting to home...',
-          user: demoUser,
-          token: demoToken,
-          isOfflineDemo: true,
-        };
-      }
-      throw error;
+      const message =
+        error.data?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        'Login failed. Please verify your credentials.';
+      const err = new Error(message);
+      err.status = error.status || error.response?.status;
+      throw err;
     }
   },
 
