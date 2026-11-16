@@ -17,8 +17,10 @@ import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
 import DatasetsList from './pages/DatasetsList';
 import DatasetUpload from './pages/DatasetUpload';
+import DatasetDetails from './pages/DatasetDetails';
 import FieldMapping from './pages/FieldMapping';
-import Pipelines from './pages/Pipelines';
+import Analytics from './pages/Analytics';
+import SettingsPage from './pages/SettingsPage';
 
 // Protected Route Guard
 import ProtectedRoute from './components/ProtectedRoute';
@@ -68,13 +70,15 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="datasets" element={<DatasetsList />} />
             <Route path="datasets/upload" element={<DatasetUpload />} />
+            <Route path="datasets/:id" element={<DatasetDetails />} />
+            <Route path="datasets/:id/profile" element={<DatasetDetails />} />
             <Route path="datasets/mapping" element={<FieldMapping />} />
             <Route path="datasets/:id/mapping" element={<FieldMapping />} />
-            <Route path="pipelines" element={<Pipelines />} />
-            <Route path="features" element={<Pipelines />} />
-            <Route path="models" element={<Pipelines />} />
-            <Route path="analytics" element={<Pipelines />} />
-            <Route path="settings" element={<Pipelines />} />
+            <Route path="pipelines" element={<Navigate to="/dashboard/datasets" replace />} />
+            <Route path="features" element={<Navigate to="/dashboard/datasets" replace />} />
+            <Route path="models" element={<Navigate to="/dashboard/datasets" replace />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
 
           {/* Legacy route redirects */}

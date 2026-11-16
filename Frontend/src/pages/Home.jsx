@@ -222,14 +222,14 @@ const Home = () => {
     {
       id: 4,
       step: '04',
-      title: 'Model Studio & Baseline Evaluation',
-      subtitle: 'Training, Metrics & One-Click Export',
-      tag: 'ML Inference',
-      desc: 'Evaluates baseline predictive models on preprocessed data. Inspect confusion matrices, precision/recall curves, and ROC-AUC scores with instant CSV/JSON exports.',
+      title: 'Field Mapping & Quality Audit',
+      subtitle: 'Column Validation, Types & Clean Export',
+      tag: 'Field Mapping',
+      desc: 'Map source columns to target schema definitions, validate data types, inspect null frequencies, and export clean, verified datasets ready for analytics with instant CSV and JSON exports.',
       details: [
-        'Automated 80/20 train-test stratification',
-        'Baseline Random Forest and Logistic Regression metrics',
-        'Clean dataset export ready for Scikit-learn or PyTorch',
+        'Interactive source-to-target field mapping studio',
+        'Real-time data completeness & null frequency audits',
+        'Clean dataset export ready for production analytics',
       ],
     },
   ];
@@ -299,8 +299,8 @@ const Home = () => {
         {/* Hero Subtitle */}
         <p className="mt-6 text-base sm:text-lg lg:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal">
           {isAuthenticated
-            ? 'Access your active datasets, inspect columnar distributions in real time, and trigger automated ML pipelines with zero data leakage.'
-            : 'Our enterprise AI platform automates repetitive dataset tasks, infers tabular schemas instantly, and streamlines end-to-end ML preprocessing workflows.'}
+            ? 'Access your active datasets, inspect columnar distributions in real time, and automate data preprocessing with zero data leakage.'
+            : 'Our enterprise AI platform automates repetitive dataset tasks, infers tabular schemas instantly, and streamlines end-to-end preprocessing workflows.'}
         </p>
 
         {/* Nexux Hero Glowing Email / Action Input Pill */}
@@ -358,13 +358,6 @@ const Home = () => {
               >
                 <UploadCloud className="w-4 h-4 text-cyan-400" />
                 <span>Upload Dataset</span>
-              </Link>
-              <Link
-                to="/dashboard/pipelines"
-                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-7 py-4 rounded-full bg-white/5 hover:bg-white/10 text-slate-200 font-bold border border-slate-700 transition-all text-sm cursor-pointer"
-              >
-                <GitBranch className="w-4 h-4 text-purple-400" />
-                <span>ML Pipelines</span>
               </Link>
             </>
           ) : (
@@ -766,7 +759,7 @@ const Home = () => {
               No Datasets Uploaded Yet
             </h3>
             <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mb-8 leading-relaxed">
-              All preloaded mock datasets have been removed. Your Nexora workspace is fresh and clean. Upload your custom tabular CSV, TSV, or JSON dataset to run real-time schema inference, null auditing, and ML pipeline training.
+              All preloaded mock datasets have been removed. Your Nexora workspace is fresh and clean. Upload your custom tabular CSV, TSV, or JSON dataset to run real-time schema inference, null auditing, and data preprocessing.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
@@ -807,19 +800,19 @@ const Home = () => {
       </section>
 
       {/* ========================================================= */}
-      {/* SECTION 3: THE 4-STEP END-TO-END PIPELINE STUDIO */}
+      {/* SECTION 3: THE 4-STEP END-TO-END PREPROCESSING ENGINE */}
       {/* ========================================================= */}
       <section id="pipeline" className="py-20 md:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-3">
-            <GitBranch className="w-3.5 h-3.5" />
-            <span>End-to-End Pipeline</span>
+          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 text-xs font-bold uppercase tracking-wider mb-3">
+            <Layers className="w-3.5 h-3.5" />
+            <span>Data Preprocessing Lifecycle</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            How Nexora Transforms Raw Data Into Models
+            How Nexora Transforms Raw Datasets
           </h2>
           <p className="text-sm sm:text-base text-slate-400 mt-2">
-            Click on any phase below to inspect the automated lifecycle from initial drag-and-drop ingestion to trained model metrics.
+            Click on any phase below to inspect the automated lifecycle from initial drag-and-drop ingestion to clean, validated data.
           </p>
         </div>
 
@@ -902,7 +895,7 @@ const Home = () => {
                 </div>
               </div>
               <Link
-                to={isAuthenticated ? '/dashboard/pipelines' : '/register'}
+                to={isAuthenticated ? '/dashboard/datasets/upload' : '/register'}
                 className="w-full inline-flex items-center justify-center space-x-2 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs transition-all shadow-md"
               >
                 <span>Launch {activeWorkflow.title}</span>
@@ -1109,7 +1102,7 @@ const Home = () => {
             Frequently Asked Questions
           </h2>
           <p className="text-sm sm:text-base text-slate-400 mt-2">
-            Everything you need to know about Nexora's tabular pipelines, security, and ML capabilities.
+            Everything you need to know about Nexora's tabular data processing, security, and schema features.
           </p>
         </div>
 

@@ -31,7 +31,7 @@ const DatasetMetadataForm = ({ metadata, setMetadata }) => {
         <div>
           <h3 className="text-sm font-bold text-white">Dataset Configuration & Metadata</h3>
           <p className="text-xs text-slate-400">
-            Define descriptive tags and parsing options for downstream ML pipelines.
+            Define descriptive tags and parsing options for downstream preprocessing and analytics.
           </p>
         </div>
       </div>

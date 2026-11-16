@@ -16,7 +16,7 @@ import {
   Layers,
   LayoutGrid,
   List,
-  Sparkles,
+  BarChart3,
   AlertCircle,
   CheckCircle2,
   Wifi,
@@ -190,17 +190,6 @@ const DatasetsList = () => {
     }
   };
 
-  // Handle restoring sample datasets
-  const handleLoadSampleDatasets = () => {
-    const samples = datasetService.resetCatalog();
-    setDatasets(samples);
-    setNotification({
-      type: 'success',
-      message: 'Demo sample datasets loaded into catalog.',
-    });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
   // Collect unique formats and tags
   const allFormats = ['ALL', ...new Set(datasets.map((d) => (d.format || 'CSV').toUpperCase()))];
   const allTags = ['ALL', ...new Set(datasets.flatMap((d) => d.tags || []))];
@@ -262,7 +251,7 @@ const DatasetsList = () => {
             </span>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Browse, manage, and inspect all ingested tabular data sources ready for preprocessing and pipelines.
+            Browse, manage, and inspect all ingested tabular data sources ready for schema analysis and preprocessing.
           </p>
         </div>
 
@@ -570,7 +559,7 @@ const DatasetsList = () => {
 
                     {/* Description */}
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                      {ds.description || 'Ingested dataset ready for ML analysis & preprocessing pipelines.'}
+                      {ds.description || 'Ingested dataset ready for schema analysis & preprocessing.'}
                     </p>
 
                     {/* Tags */}
@@ -637,10 +626,23 @@ const DatasetsList = () => {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            navigate(`/dashboard/datasets/${ds.id}`);
+                          }}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#070b1c] text-cyan-300 hover:text-white hover:bg-cyan-950 border border-cyan-500/30 transition-all cursor-pointer"
+                          title="Dataset Details & Profiling"
+                        >
+                          <BarChart3 className="w-3.5 h-3.5" />
+                          <span>Profile</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             navigate(`/dashboard/datasets/mapping?datasetId=${ds.id}`);
                           }}
                           className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#070b1c] text-indigo-300 hover:text-white hover:bg-indigo-950 border border-indigo-500/30 transition-all cursor-pointer"
-                          title="Map source columns to ML target roles"
+                          title="Map source columns to target schema"
                         >
                           <Layers className="w-3.5 h-3.5" />
                           <span>Map</span>
@@ -736,6 +738,14 @@ const DatasetsList = () => {
                             </button>
                             <button
                               type="button"
+                              onClick={() => navigate(`/dashboard/datasets/${ds.id}`)}
+                              className="p-1.5 rounded-lg text-xs font-semibold text-cyan-300 hover:text-white hover:bg-cyan-950 border border-cyan-500/30 transition-colors cursor-pointer"
+                              title="Dataset Details & Profiling"
+                            >
+                              <BarChart3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => navigate(`/dashboard/datasets/mapping?datasetId=${ds.id}`)}
                               className="p-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white hover:bg-indigo-950 border border-indigo-500/30 transition-colors cursor-pointer"
                               title="Field Mapping Studio"
@@ -785,7 +795,7 @@ const DatasetsList = () => {
             <div>
               <h3 className="text-base font-bold text-white">No Datasets Ingested Yet</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto mb-6 leading-relaxed">
-                Get started by uploading your first CSV or JSON dataset, or instantly restore pre-configured sample datasets to explore schemas and preview records.
+                Get started by uploading your first CSV, TSV, or JSON dataset to explore schemas and preview records.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <button
@@ -794,13 +804,6 @@ const DatasetsList = () => {
                 >
                   <UploadCloud className="w-4 h-4" />
                   <span>Upload First Dataset</span>
-                </button>
-                <button
-                  onClick={handleLoadSampleDatasets}
-                  className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-full bg-[#070b1c] hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 font-bold text-xs transition-all cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  <span>Load Sample Datasets</span>
                 </button>
               </div>
             </div>

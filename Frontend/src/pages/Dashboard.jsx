@@ -13,12 +13,10 @@ import {
   FileSpreadsheet,
   Activity,
   HardDrive,
-  GitBranch,
   Cpu,
   Search,
   Filter,
   Layers,
-  Zap,
   BarChart3,
   Clock,
   Eye,
@@ -32,8 +30,6 @@ const Dashboard = () => {
   const [datasets, setDatasets] = useState(() => datasetService.getDatasets());
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('ALL');
-  const [activeWorkflowStep, setActiveWorkflowStep] = useState(1);
-  const [interactiveNotice, setInteractiveNotice] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -64,6 +60,10 @@ const Dashboard = () => {
     (acc, d) => acc + (d.sizeBytes || d.fileSize || 0),
     0
   );
+  const totalColumns = datasets.reduce(
+    (acc, d) => acc + (d.columns?.length || d.columnCount || 0),
+    0
+  );
 
   const totalNulls = datasets.reduce(
     (acc, d) =>
@@ -75,17 +75,21 @@ const Dashboard = () => {
       acc + (d.rowCount || 0) * (d.columns?.length || d.columnCount || 1),
     0
   );
+  const hasDatasets = datasets.length > 0;
   const healthPercentage =
-    totalEstimatedCells > 0
+    hasDatasets && totalEstimatedCells > 0
       ? Math.min(
           100,
           Math.max(
-            80,
+            50,
             Math.round(((totalEstimatedCells - totalNulls) / totalEstimatedCells) * 100)
           )
         )
-      : 100;
-  const generalScore = totalEstimatedCells > 0 ? (healthPercentage / 10).toFixed(1) : '10.0';
+      : 0;
+  const generalScore =
+    hasDatasets && totalEstimatedCells > 0
+      ? (healthPercentage / 10).toFixed(1)
+      : '0.0';
 
   // Filter datasets by search and format
   const filteredDatasets = datasets.filter((d) => {
@@ -96,74 +100,6 @@ const Dashboard = () => {
       selectedFormat === 'ALL' || d.format.toUpperCase() === selectedFormat;
     return matchesSearch && matchesFormat;
   });
-
-  const workflowSteps = [
-    {
-      id: 1,
-      step: '01',
-      title: 'Dataset Ingestion',
-      subtitle: 'Dropzone & S3 Storage',
-      status: 'Active',
-      desc: 'Multipart chunked streaming supporting CSV, JSON, and TSV with automated type inference.',
-      actionLabel: 'Upload Dataset',
-      actionPath: '/dashboard/datasets/upload',
-    },
-    {
-      id: 2,
-      step: '02',
-      title: 'Schema Inference',
-      subtitle: 'Null & Type Detection',
-      status: 'Operational',
-      desc: 'Deep inspection of tabular columns, missing value counts, and categorical distributions.',
-      actionLabel: 'View Datasets',
-      actionPath: '/dashboard/datasets',
-    },
-    {
-      id: 3,
-      step: '03',
-      title: 'Data Preprocessing',
-      subtitle: 'Imputation & Cleaning',
-      status: 'Ready',
-      desc: 'Mean/median strategies for missing values, duplicate removal, and outlier detection.',
-      actionLabel: 'Open Pipeline',
-      actionPath: '/dashboard/pipelines',
-    },
-    {
-      id: 4,
-      step: '04',
-      title: 'Feature Studio',
-      subtitle: 'Encoding & Scaling',
-      status: 'Configured',
-      desc: 'StandardScaler, MinMax, One-Hot categorical transformations with automated target mapping.',
-      actionLabel: 'Feature Engineering',
-      actionPath: '/dashboard/pipelines',
-    },
-    {
-      id: 5,
-      step: '05',
-      title: 'Model Evaluation',
-      subtitle: 'Inference Studio',
-      status: 'Upcoming',
-      desc: 'Train classification and regression models with confusion matrix and ROC-AUC metrics.',
-      actionLabel: 'Model Studio',
-      actionPath: '/dashboard/models',
-    },
-  ];
-
-  const currentStep = workflowSteps.find((s) => s.id === activeWorkflowStep) || workflowSteps[0];
-
-  const triggerDiagnostic = (type) => {
-    if (type === 'nulls') {
-      setInteractiveNotice('Scan Complete: Ingested datasets have 99.8% data integrity (7 minor nulls detected).');
-    } else if (type === 'schema') {
-      setInteractiveNotice('Type Check: 8 inferred types (String: 1, Integer: 2, Float: 2, Categorical: 2, Boolean: 1).');
-    } else if (type === 'pipeline') {
-      setInteractiveNotice('Pipeline Simulation: Batch inference ready. 2,500 rows queued for training.');
-    }
-    setTimeout(() => {
-      setInteractiveNotice(null);
-    }, 4500);
-  };
 
   return (
     <div className="space-y-8 pb-12 animate-fade-in text-slate-100">
@@ -179,7 +115,7 @@ const Dashboard = () => {
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 text-cyan-300 text-xs font-semibold border border-cyan-500/30 backdrop-blur-md">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Nexora Workspace Active • Real-Time Pipeline Engine</span>
+              <span>Nexora Workspace Active • Real-Time Data Engine</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
               Welcome back,{' '}
@@ -189,7 +125,7 @@ const Dashboard = () => {
               ! 👋
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Your high-throughput dataset platform is operational. Ingest tabular data, inspect inferred schemas, and initiate machine learning preprocessing pipelines.
+              Your high-throughput dataset platform is operational. Ingest tabular data, inspect inferred schemas, and analyze data quality in real time.
             </p>
           </div>
 
@@ -203,38 +139,15 @@ const Dashboard = () => {
               <span>Upload New Dataset</span>
             </Link>
             <Link
-              to="/dashboard/pipelines"
-              className="inline-flex items-center space-x-2 px-4 py-3 rounded-full bg-[#0d1636] hover:bg-[#121e4a] text-slate-200 font-semibold text-xs border border-cyan-500/30 transition-all cursor-pointer"
-            >
-              <GitBranch className="w-4 h-4 text-purple-400" />
-              <span>Launch Pipeline</span>
-            </Link>
-            <Link
               to="/dashboard/datasets"
-              className="inline-flex items-center space-x-2 px-4 py-3 rounded-full bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs border border-slate-700 transition-all cursor-pointer"
+              className="inline-flex items-center space-x-2 px-5 py-3 rounded-full bg-[#0d1636] hover:bg-[#121e4a] text-slate-200 font-semibold text-xs border border-cyan-500/30 transition-all cursor-pointer"
             >
               <Database className="w-4 h-4 text-cyan-400" />
-              <span>Catalog</span>
+              <span>View Datasets Catalog</span>
             </Link>
           </div>
         </div>
       </div>
-
-      {/* Interactive Notice Banner */}
-      {interactiveNotice && (
-        <div className="p-4 rounded-2xl bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 text-xs sm:text-sm flex items-center justify-between shadow-lg animate-fade-in backdrop-blur-md">
-          <div className="flex items-center space-x-2.5">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-            <span className="font-medium">{interactiveNotice}</span>
-          </div>
-          <button
-            onClick={() => setInteractiveNotice(null)}
-            className="text-cyan-400 hover:text-white font-bold text-xs"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {/* ========================================================= */}
       {/* 4 TOP KPI STATS (Nexux Dark Style with Glowing Accents) */}
@@ -255,7 +168,7 @@ const Dashboard = () => {
           </div>
           <div className="flex items-center text-xs text-cyan-400 mt-2 font-medium">
             <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-cyan-400" />
-            <span>Ready for Preprocessing</span>
+            <span>{hasDatasets ? 'Ready for Preprocessing' : 'Awaiting Ingestion'}</span>
           </div>
         </div>
 
@@ -273,7 +186,7 @@ const Dashboard = () => {
             {totalRecords.toLocaleString()}
           </div>
           <div className="flex items-center text-xs text-slate-400 mt-2 font-medium">
-            <span>Across all tabular streams</span>
+            <span>{hasDatasets ? 'Across all tabular streams' : 'No records indexed'}</span>
           </div>
         </div>
 
@@ -291,7 +204,7 @@ const Dashboard = () => {
             {formatBytes(totalSizeBytes)}
           </div>
           <div className="flex items-center text-xs text-purple-400 mt-2 font-medium">
-            <span>High-speed cached memory</span>
+            <span>{hasDatasets ? 'High-speed cached memory' : '0 B storage allocated'}</span>
           </div>
         </div>
 
@@ -308,7 +221,7 @@ const Dashboard = () => {
           <div className="text-2xl sm:text-3xl font-black text-white">{healthPercentage}%</div>
           <div className="flex items-center text-xs text-pink-400 mt-2 font-medium">
             <Sparkles className="w-3.5 h-3.5 mr-1" />
-            <span>Live Validation Index</span>
+            <span>{hasDatasets ? 'Live Validation Index' : 'Awaiting Data Upload'}</span>
           </div>
         </div>
       </div>
@@ -326,8 +239,14 @@ const Dashboard = () => {
                 <h3 className="text-base sm:text-lg font-bold text-white">
                   Ingestion Stream & Memory Analysis
                 </h3>
-                <span className="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">
-                  Live Stream
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                    hasDatasets
+                      ? 'bg-cyan-950 text-cyan-300 border-cyan-500/30'
+                      : 'bg-slate-900 text-slate-400 border-slate-800'
+                  }`}
+                >
+                  {hasDatasets ? 'Live Stream' : 'Stream Inactive'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -335,12 +254,12 @@ const Dashboard = () => {
               </p>
             </div>
             <div className="flex items-center space-x-2 text-xs">
-              <span className="flex items-center text-cyan-400 font-semibold">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 mr-1.5" />
+              <span className={`flex items-center font-semibold ${hasDatasets ? 'text-cyan-400' : 'text-slate-500'}`}>
+                <span className={`w-2 h-2 rounded-full mr-1.5 ${hasDatasets ? 'bg-cyan-400' : 'bg-slate-600'}`} />
                 Throughput (MB/s)
               </span>
-              <span className="flex items-center text-purple-400 font-semibold ml-2">
-                <span className="w-2 h-2 rounded-full bg-purple-400 mr-1.5" />
+              <span className={`flex items-center font-semibold ml-2 ${hasDatasets ? 'text-purple-400' : 'text-slate-500'}`}>
+                <span className={`w-2 h-2 rounded-full mr-1.5 ${hasDatasets ? 'bg-purple-400' : 'bg-slate-600'}`} />
                 CPU Core Load
               </span>
             </div>
@@ -366,42 +285,79 @@ const Dashboard = () => {
               <line x1="0" y1="80" x2="500" y2="80" stroke="#1e293b" strokeDasharray="3 3" />
               <line x1="0" y1="120" x2="500" y2="120" stroke="#1e293b" strokeDasharray="3 3" />
 
-              {/* Secondary wave path (purple) */}
-              <path
-                d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75 L500,160 L0,160 Z"
-                fill="url(#purpleWaveGrad)"
-              />
-              <path
-                d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75"
-                fill="none"
-                stroke="#a855f7"
-                strokeWidth="2"
-              />
+              {hasDatasets ? (
+                <>
+                  {/* Secondary wave path (purple) */}
+                  <path
+                    d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75 L500,160 L0,160 Z"
+                    fill="url(#purpleWaveGrad)"
+                  />
+                  <path
+                    d="M0,130 Q70,95 130,110 T260,85 T380,95 T500,75"
+                    fill="none"
+                    stroke="#a855f7"
+                    strokeWidth="2"
+                  />
 
-              {/* Primary wave path (cyan) */}
-              <path
-                d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25 L500,160 L0,160 Z"
-                fill="url(#cyanWaveGrad)"
-              />
-              <path
-                d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25"
-                fill="none"
-                stroke="#00d2ff"
-                strokeWidth="2.5"
-                filter="drop-shadow(0 0 6px rgba(0,210,255,0.6))"
-              />
+                  {/* Primary wave path (cyan) */}
+                  <path
+                    d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25 L500,160 L0,160 Z"
+                    fill="url(#cyanWaveGrad)"
+                  />
+                  <path
+                    d="M0,140 Q60,70 120,90 T240,40 T360,65 T500,25"
+                    fill="none"
+                    stroke="#00d2ff"
+                    strokeWidth="2.5"
+                    filter="drop-shadow(0 0 6px rgba(0,210,255,0.6))"
+                  />
 
-              {/* Active Pulsing Point */}
-              <circle cx="240" cy="40" r="4" fill="#00d2ff" className="animate-ping" />
-              <circle cx="240" cy="40" r="3" fill="#ffffff" />
+                  {/* Active Pulsing Point */}
+                  <circle cx="240" cy="40" r="4" fill="#00d2ff" className="animate-ping" />
+                  <circle cx="240" cy="40" r="3" fill="#ffffff" />
+                </>
+              ) : (
+                <>
+                  {/* Flat baseline when zero datasets exist */}
+                  <line
+                    x1="0"
+                    y1="145"
+                    x2="500"
+                    y2="145"
+                    stroke="#334155"
+                    strokeWidth="2"
+                    strokeDasharray="6 4"
+                  />
+                </>
+              )}
             </svg>
+
+            {/* Empty Stream Overlay when no datasets */}
+            {!hasDatasets && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-[#0a0f24]/75 backdrop-blur-[2px] rounded-2xl">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-950/60 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mb-2">
+                  <Activity className="w-5 h-5 text-slate-500" />
+                </div>
+                <p className="text-sm font-bold text-white">Stream Inactive (0 Active Ingestions)</p>
+                <p className="text-xs text-slate-400 max-w-sm mt-0.5">
+                  Real-time throughput and memory buffer curves will activate once you upload a dataset.
+                </p>
+                <Link
+                  to="/dashboard/datasets/upload"
+                  className="mt-3 inline-flex items-center space-x-1.5 px-4 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-sm transition-all"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Upload Dataset</span>
+                </Link>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono mt-2 pt-2 border-t border-slate-800">
             <span>00:00 (Buffer Init)</span>
             <span>06:00 (Ingestion Peak)</span>
             <span>12:00 (Preprocessing)</span>
-            <span>18:00 (Model Baseline)</span>
+            <span>18:00 (Analytics Ready)</span>
             <span>24:00 (Cached)</span>
           </div>
         </div>
@@ -414,9 +370,12 @@ const Dashboard = () => {
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Data Quality Score
               </span>
-              <div className="text-xl font-extrabold text-white mt-1">{healthPercentage}%</div>
+              <div className="text-xl font-extrabold text-white mt-1">
+                {hasDatasets ? `${healthPercentage}%` : '0%'}
+              </div>
               <p className="text-[11px] text-cyan-400 mt-0.5 flex items-center">
-                <TrendingUp className="w-3 h-3 mr-1" /> Real-Time Completeness
+                <TrendingUp className="w-3 h-3 mr-1" />
+                {hasDatasets ? 'Real-Time Completeness' : 'Awaiting Data Upload'}
               </p>
             </div>
 
@@ -432,7 +391,7 @@ const Dashboard = () => {
                 />
                 <path
                   className="text-cyan-400"
-                  strokeDasharray={`${healthPercentage}, 100`}
+                  strokeDasharray={`${hasDatasets ? healthPercentage : 0}, 100`}
                   strokeWidth="3.5"
                   strokeLinecap="round"
                   stroke="currentColor"
@@ -441,19 +400,28 @@ const Dashboard = () => {
                   filter="drop-shadow(0 0 4px rgba(6,182,212,0.8))"
                 />
               </svg>
-              <span className="absolute font-bold text-xs text-white">{healthPercentage}%</span>
+              <span className="absolute font-bold text-xs text-white">
+                {hasDatasets ? `${healthPercentage}%` : '0%'}
+              </span>
             </div>
           </div>
 
-          {/* Gauge 2: General Scoring */}
+          {/* Gauge 2: Inferred Columns & Schema Structure */}
           <div className="bg-[#0a0f24] rounded-3xl border border-purple-500/20 p-5 shadow-xl flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Pipeline Health Rating
+                Inferred Columns
               </span>
-              <div className="text-xl font-extrabold text-white mt-1">{generalScore} / 10</div>
+              <div className="text-xl font-extrabold text-white mt-1">
+                {hasDatasets ? `${totalColumns} Columns` : '0 Columns'}
+              </div>
               <p className="text-[11px] text-purple-400 mt-0.5 flex items-center">
-                <Sparkles className="w-3 h-3 mr-1" /> Dynamic Audit
+                <Layers className="w-3 h-3 mr-1" />
+                {hasDatasets
+                  ? totalNulls === 0
+                    ? 'Zero Nulls • Auto-Typed'
+                    : `${totalNulls} Nulls Detected`
+                  : 'No Columns Indexed'}
               </p>
             </div>
 
@@ -469,7 +437,7 @@ const Dashboard = () => {
                 />
                 <path
                   className="text-purple-400"
-                  strokeDasharray={`${Math.round(healthPercentage)}, 100`}
+                  strokeDasharray={`${hasDatasets ? Math.min(100, Math.max(25, totalColumns * 12)) : 0}, 100`}
                   strokeWidth="3.5"
                   strokeLinecap="round"
                   stroke="currentColor"
@@ -478,152 +446,11 @@ const Dashboard = () => {
                   filter="drop-shadow(0 0 4px rgba(168,85,247,0.8))"
                 />
               </svg>
-              <span className="absolute font-bold text-xs text-white">{generalScore}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================= */}
-      {/* INTERACTIVE ML WORKFLOW PIPELINE TRACK */}
-      {/* ========================================================= */}
-      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-6 sm:p-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="text-base sm:text-lg font-bold text-white">
-                Interactive ML Pipeline Workflow
-              </h3>
-              <span className="text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-500/40 px-2 py-0.5 rounded-full">
-                Click any step to inspect
+              <span className="absolute font-bold text-xs text-white">
+                {hasDatasets ? totalColumns : '0'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Continuous end-to-end lifecycle from raw dataset upload to trained machine learning models.
-            </p>
           </div>
-          <Link
-            to="/dashboard/pipelines"
-            className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 flex items-center space-x-1"
-          >
-            <span>Open Full Pipeline Studio</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        {/* Step Selector Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {workflowSteps.map((item) => {
-            const isSelected = activeWorkflowStep === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveWorkflowStep(item.id)}
-                className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-[#0e163b] border-cyan-400 ring-2 ring-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.25)] scale-102'
-                    : 'bg-[#070b1c] hover:bg-[#0c122e] border-slate-800'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[11px] font-mono font-bold ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`}>
-                    Step {item.step}
-                  </span>
-                  <span
-                    className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                      isSelected ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-                <div className="text-xs font-bold text-white leading-tight">{item.title}</div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-snug">{item.subtitle}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Active Step Detail Card */}
-        <div className="mt-5 p-5 rounded-2xl bg-[#050814] text-white flex flex-col md:flex-row md:items-center justify-between gap-4 border border-cyan-500/20">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-cyan-300 text-xs font-semibold">
-              <Zap className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Step {currentStep.step}: {currentStep.title}</span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              {currentStep.desc}
-            </p>
-          </div>
-          <Link
-            to={currentStep.actionPath}
-            className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs transition-all shrink-0 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.35)]"
-          >
-            <span>{currentStep.actionLabel}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </div>
-
-      {/* ========================================================= */}
-      {/* QUICK DIAGNOSTIC PLAYGROUND */}
-      {/* ========================================================= */}
-      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-6 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <h3 className="text-base font-bold text-white">
-              Interactive ML Health & Schema Tools
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Run instant micro-diagnostics directly on active cached memory.
-            </p>
-          </div>
-          <span className="text-[11px] text-slate-500 font-mono">Real-time Node Runtime</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={() => triggerDiagnostic('nulls')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-cyan-500/40 transition-all text-left cursor-pointer group"
-          >
-            <div className="w-8 h-8 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white">Check Null Values</p>
-              <p className="text-[10px] text-slate-400">Scan missing values in datasets</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => triggerDiagnostic('schema')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-purple-500/40 transition-all text-left cursor-pointer group"
-          >
-            <div className="w-8 h-8 rounded-xl bg-purple-950 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
-              <Database className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white">Verify Schema Types</p>
-              <p className="text-[10px] text-slate-400">Infer integers, floats & strings</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => triggerDiagnostic('pipeline')}
-            className="flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-800 bg-[#070b1c] hover:bg-[#0e163b] hover:border-emerald-500/40 transition-all text-left cursor-pointer group"
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-950 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105">
-              <Cpu className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white">Simulate Pipeline Batch</p>
-              <p className="text-[10px] text-slate-400">Test preprocessing throughput</p>
-            </div>
-          </button>
         </div>
       </div>
 
@@ -741,11 +568,11 @@ const Dashboard = () => {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <Link
-                        to="/dashboard/datasets"
+                        to={`/dashboard/datasets/${dataset.id}`}
                         className="inline-flex items-center space-x-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Inspect</span>
+                        <span>Profile</span>
                       </Link>
                     </td>
                   </tr>
