@@ -9,6 +9,12 @@ const {
   readPreviewRowsFromStream
 } = require('../utils/streamParsers');
 const {
+  transformRecord,
+  transformDataset,
+  generateTransformConfigFromMapping,
+  applyMappingAndTransformations
+} = require('../utils/transformationEngine');
+const {
   uploadDatasetFile,
   getDatasetFileStream,
   getDownloadUrl,
@@ -785,6 +791,86 @@ const saveDatasetMapping = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Apply transformations to a dataset's preview rows using configuration or field mapping
+ * @route   POST /api/datasets/:id/transform
+ * @access  Public / Private
+ */
+const transformDatasetRows = async (req, res, next) => {
+  try {
+    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
+
+    if (!dataset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dataset not found.'
+      });
+    }
+
+    const { config, overrides, useMapping = true, rows: inputRows } = req.body;
+
+    // Use input rows if provided, or preview rows from dataset
+    const rowsToTransform = inputRows || dataset.previewData || dataset.sampleRows || [];
+
+    let activeConfig;
+    if (useMapping && dataset.mapping) {
+      activeConfig = generateTransformConfigFromMapping(dataset.mapping, overrides || config || {});
+    } else {
+      activeConfig = config || {};
+    }
+
+    const transformedRows = transformDataset(rowsToTransform, activeConfig);
+
+    return res.status(200).json({
+      success: true,
+      datasetId: dataset.datasetId || dataset.id,
+      name: dataset.name || dataset.fileName,
+      appliedConfig: activeConfig,
+      count: transformedRows.length,
+      rows: transformedRows
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Transform a single record using provided configuration or mapping
+ * @route   POST /api/datasets/transform/record
+ * @access  Public / Private
+ */
+const transformRecordEndpoint = (req, res, next) => {
+  try {
+    const { record, config, mapping, overrides } = req.body;
+
+    if (!record || typeof record !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid record object to transform.'
+      });
+    }
+
+    let transformed;
+    let appliedConfig;
+
+    if (mapping) {
+      appliedConfig = generateTransformConfigFromMapping(mapping, overrides || config || {});
+      transformed = applyMappingAndTransformations(record, mapping, overrides || config || {});
+    } else {
+      appliedConfig = config || {};
+      transformed = transformRecord(record, appliedConfig);
+    }
+
+    return res.status(200).json({
+      success: true,
+      appliedConfig,
+      transformed
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   uploadDataset,
   getDatasets,
@@ -794,5 +880,7 @@ module.exports = {
   deleteDataset,
   getDatasetMapping,
   saveDatasetMapping,
+  transformDatasetRows,
+  transformRecordEndpoint,
   SAMPLE_DATASETS
 };

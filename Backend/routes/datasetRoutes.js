@@ -10,11 +10,16 @@ const {
   getDatasetDownloadUrl,
   deleteDataset,
   getDatasetMapping,
-  saveDatasetMapping
+  saveDatasetMapping,
+  transformDatasetRows,
+  transformRecordEndpoint
 } = require('../controllers/datasetController');
 
 // All dataset routes use optionalProtect: attaches req.user if JWT Bearer token is provided
 router.use(optionalProtect);
+
+// @route   POST /api/datasets/transform/record
+router.post('/transform/record', transformRecordEndpoint);
 
 // @route   POST /api/datasets/upload
 router.post('/upload', handleUpload, uploadDataset);
@@ -39,5 +44,8 @@ router.get('/:id/mapping', getDatasetMapping);
 
 // @route   POST /api/datasets/:id/mapping
 router.post('/:id/mapping', saveDatasetMapping);
+
+// @route   POST /api/datasets/:id/transform
+router.post('/:id/transform', transformDatasetRows);
 
 module.exports = router;
