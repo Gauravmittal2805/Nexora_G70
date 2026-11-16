@@ -51,6 +51,12 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
           badge: 'New',
           badgeColor: 'bg-cyan-950 text-cyan-300 border border-cyan-500/40',
         },
+        {
+          name: 'Field Mapping',
+          path: '/dashboard/datasets/mapping',
+          icon: Layers,
+          badge: null,
+        },
       ],
     },
     {

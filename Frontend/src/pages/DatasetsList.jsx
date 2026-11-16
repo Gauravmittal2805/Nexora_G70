@@ -109,8 +109,8 @@ const DatasetsList = () => {
     }, 100);
 
     try {
-      // Connect to preview API endpoint: GET /api/datasets/:id/preview?limit=20
-      const preview = await datasetService.getDatasetPreview(dataset.id, 20);
+      // Connect to paginated preview API endpoint: GET /api/datasets/:id/preview?page=1&limit=10
+      const preview = await datasetService.getDatasetPreview(dataset.id, { page: 1, limit: 10 });
       setPreviewData({
         ...preview,
         datasetId: dataset.id,
@@ -122,6 +122,46 @@ const DatasetsList = () => {
     } catch (err) {
       console.error('Failed to load dataset preview:', err);
       setPreviewError(err.message || 'Failed to retrieve preview rows.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Handle server-side pagination page change
+  const handlePageChange = async (newPage) => {
+    if (!previewingDatasetId) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await datasetService.getDatasetPreview(previewingDatasetId, {
+        page: newPage,
+        limit: previewData?.pagination?.limit || 10,
+      });
+      setPreviewData((prev) => ({
+        ...prev,
+        ...preview,
+      }));
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to retrieve page.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Handle server-side pagination page size change
+  const handlePageSizeChange = async (newLimit) => {
+    if (!previewingDatasetId) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await datasetService.getDatasetPreview(previewingDatasetId, {
+        page: 1,
+        limit: newLimit,
+      });
+      setPreviewData((prev) => ({
+        ...prev,
+        ...preview,
+      }));
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to change page size.');
     } finally {
       setPreviewLoading(false);
     }
@@ -578,19 +618,34 @@ const DatasetsList = () => {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
-                      <button
-                        type="button"
-                        onClick={(e) => handleTogglePreview(ds, e)}
-                        className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
-                            : 'bg-cyan-950/80 text-cyan-300 hover:bg-cyan-900 border border-cyan-500/30'
-                        }`}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>{isSelected ? 'Close Preview' : 'Preview Table'}</span>
-                      </button>
+                    <div className="pt-2 flex items-center justify-between border-t border-slate-800/60 gap-1.5">
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => handleTogglePreview(ds, e)}
+                          className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+                              : 'bg-cyan-950/80 text-cyan-300 hover:bg-cyan-900 border border-cyan-500/30'
+                          }`}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{isSelected ? 'Close' : 'Preview'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/dashboard/datasets/mapping?datasetId=${ds.id}`);
+                          }}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#070b1c] text-indigo-300 hover:text-white hover:bg-indigo-950 border border-indigo-500/30 transition-all cursor-pointer"
+                          title="Map source columns to ML target roles"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Map</span>
+                        </button>
+                      </div>
 
                       <button
                         type="button"
@@ -681,6 +736,14 @@ const DatasetsList = () => {
                             </button>
                             <button
                               type="button"
+                              onClick={() => navigate(`/dashboard/datasets/mapping?datasetId=${ds.id}`)}
+                              className="p-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white hover:bg-indigo-950 border border-indigo-500/30 transition-colors cursor-pointer"
+                              title="Field Mapping Studio"
+                            >
+                              <Layers className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={(e) => handleDelete(ds.id, ds.name, e)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                               title="Delete dataset"
@@ -758,6 +821,10 @@ const DatasetsList = () => {
               fileSizeBytes={previewData?.fileSizeBytes}
               isLoading={previewLoading}
               error={previewError}
+              pagination={previewData?.pagination}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+              onOpenMapping={() => navigate(`/dashboard/datasets/mapping?datasetId=${previewingDatasetId}`)}
               onRetry={() => {
                 const ds = datasets.find((d) => d.id === previewingDatasetId);
                 if (ds) handleTogglePreview(ds);

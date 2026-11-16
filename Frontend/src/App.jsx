@@ -17,6 +17,7 @@ import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
 import DatasetsList from './pages/DatasetsList';
 import DatasetUpload from './pages/DatasetUpload';
+import FieldMapping from './pages/FieldMapping';
 import Pipelines from './pages/Pipelines';
 
 // Protected Route Guard
@@ -67,6 +68,8 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="datasets" element={<DatasetsList />} />
             <Route path="datasets/upload" element={<DatasetUpload />} />
+            <Route path="datasets/mapping" element={<FieldMapping />} />
+            <Route path="datasets/:id/mapping" element={<FieldMapping />} />
             <Route path="pipelines" element={<Pipelines />} />
             <Route path="features" element={<Pipelines />} />
             <Route path="models" element={<Pipelines />} />

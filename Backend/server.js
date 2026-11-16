@@ -46,7 +46,7 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
-// Rich initial catalog with realistic sample datasets (first 10-20 records)
+// Rich initial catalog with realistic sample datasets & wide multi-column datasets
 let datasetsCatalog = [
   {
     id: 'ds-churn-101',
@@ -92,7 +92,73 @@ let datasetsCatalog = [
       { CustomerID: 'CUST-6901', Age: 49, Gender: 'Male', Tenure_Months: 11, Monthly_Charges: 91.10, Total_Charges: 1002.10, Contract_Type: 'Month-to-month', Churn: 'Yes' },
       { CustomerID: 'CUST-7234', Age: 33, Gender: 'Female', Tenure_Months: 22, Monthly_Charges: 58.00, Total_Charges: 1276.00, Contract_Type: 'One year', Churn: 'No' },
       { CustomerID: 'CUST-8890', Age: 58, Gender: 'Male', Tenure_Months: 66, Monthly_Charges: 119.45, Total_Charges: 7883.70, Contract_Type: 'Two year', Churn: 'No' },
+      { CustomerID: 'CUST-9124', Age: 42, Gender: 'Female', Tenure_Months: 19, Monthly_Charges: 73.20, Total_Charges: 1390.80, Contract_Type: 'Month-to-month', Churn: 'No' },
+      { CustomerID: 'CUST-9582', Age: 26, Gender: 'Male', Tenure_Months: 4, Monthly_Charges: 81.60, Total_Charges: 326.40, Contract_Type: 'Month-to-month', Churn: 'Yes' },
+      { CustomerID: 'CUST-9821', Age: 50, Gender: 'Female', Tenure_Months: 38, Monthly_Charges: 94.50, Total_Charges: 3591.00, Contract_Type: 'One year', Churn: 'No' },
+      { CustomerID: 'CUST-9944', Age: 36, Gender: 'Male', Tenure_Months: 14, Monthly_Charges: 68.30, Total_Charges: 956.20, Contract_Type: 'Month-to-month', Churn: 'No' },
     ],
+    mapping: {
+      target: 'Churn',
+      id: 'CustomerID',
+      numerical: ['Age', 'Tenure_Months', 'Monthly_Charges', 'Total_Charges'],
+      categorical: ['Gender', 'Contract_Type'],
+      datetime: [],
+      ignored: [],
+    },
+  },
+  {
+    id: 'ds-financial-404',
+    datasetId: 'ds-financial-404',
+    name: 'Global_Financial_Metrics.csv',
+    description: 'Corporate valuation, balance sheet ratios, and market performance metrics across global equities.',
+    format: 'CSV',
+    fileType: 'csv',
+    sizeBytes: 512400,
+    fileSize: 512400,
+    rowCount: 3800,
+    columnCount: 16,
+    uploadedAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+    createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+    status: 'Ready',
+    tags: ['Finance', 'Multi-Column', 'Valuation'],
+    columns: [
+      { name: 'Company_ID', type: 'String', missingCount: 0 },
+      { name: 'Ticker', type: 'String', missingCount: 0 },
+      { name: 'Company_Name', type: 'String', missingCount: 0 },
+      { name: 'Sector', type: 'Categorical', missingCount: 0 },
+      { name: 'Industry', type: 'Categorical', missingCount: 0 },
+      { name: 'Country', type: 'Categorical', missingCount: 0 },
+      { name: 'Market_Cap_B', type: 'Float', missingCount: 0 },
+      { name: 'Revenue_TTM_B', type: 'Float', missingCount: 0 },
+      { name: 'EBITDA_Margin_Pct', type: 'Float', missingCount: 1 },
+      { name: 'PE_Ratio', type: 'Float', missingCount: 2 },
+      { name: 'Debt_to_Equity', type: 'Float', missingCount: 0 },
+      { name: 'Dividend_Yield_Pct', type: 'Float', missingCount: 3 },
+      { name: 'Beta_5Y', type: 'Float', missingCount: 0 },
+      { name: 'Credit_Rating', type: 'Categorical', missingCount: 0 },
+      { name: 'ESG_Score', type: 'Integer', missingCount: 0 },
+      { name: 'Outperform', type: 'Boolean', missingCount: 0 },
+    ],
+    sampleRows: [
+      { Company_ID: 'EQ-001', Ticker: 'NVDA', Company_Name: 'NVIDIA Corp', Sector: 'Technology', Industry: 'Semiconductors', Country: 'USA', Market_Cap_B: 3250.4, Revenue_TTM_B: 96.3, EBITDA_Margin_Pct: 62.1, PE_Ratio: 58.2, Debt_to_Equity: 0.42, Dividend_Yield_Pct: 0.08, Beta_5Y: 1.68, Credit_Rating: 'AAA', ESG_Score: 84, Outperform: true },
+      { Company_ID: 'EQ-002', Ticker: 'MSFT', Company_Name: 'Microsoft Corp', Sector: 'Technology', Industry: 'Software', Country: 'USA', Market_Cap_B: 3100.8, Revenue_TTM_B: 245.1, EBITDA_Margin_Pct: 49.3, PE_Ratio: 34.6, Debt_to_Equity: 0.38, Dividend_Yield_Pct: 0.72, Beta_5Y: 1.15, Credit_Rating: 'AAA', ESG_Score: 89, Outperform: true },
+      { Company_ID: 'EQ-003', Ticker: 'TSM', Company_Name: 'TSMC Ltd', Sector: 'Technology', Industry: 'Semiconductors', Country: 'Taiwan', Market_Cap_B: 890.5, Revenue_TTM_B: 72.8, EBITDA_Margin_Pct: 68.4, PE_Ratio: 24.1, Debt_to_Equity: 0.28, Dividend_Yield_Pct: 1.45, Beta_5Y: 1.22, Credit_Rating: 'AA+', ESG_Score: 78, Outperform: true },
+      { Company_ID: 'EQ-004', Ticker: 'JNJ', Company_Name: 'Johnson & Johnson', Sector: 'Healthcare', Industry: 'Pharmaceuticals', Country: 'USA', Market_Cap_B: 385.2, Revenue_TTM_B: 85.1, EBITDA_Margin_Pct: 34.2, PE_Ratio: 16.8, Debt_to_Equity: 0.52, Dividend_Yield_Pct: 3.12, Beta_5Y: 0.62, Credit_Rating: 'AAA', ESG_Score: 82, Outperform: false },
+      { Company_ID: 'EQ-005', Ticker: 'ASML', Company_Name: 'ASML Holding', Sector: 'Technology', Industry: 'Semiconductor Equip', Country: 'Netherlands', Market_Cap_B: 320.1, Revenue_TTM_B: 28.4, EBITDA_Margin_Pct: 32.7, PE_Ratio: 41.5, Debt_to_Equity: 0.35, Dividend_Yield_Pct: 0.95, Beta_5Y: 1.34, Credit_Rating: 'AA', ESG_Score: 91, Outperform: true },
+      { Company_ID: 'EQ-006', Ticker: 'XOM', Company_Name: 'Exxon Mobil', Sector: 'Energy', Industry: 'Oil & Gas', Country: 'USA', Market_Cap_B: 475.6, Revenue_TTM_B: 344.5, EBITDA_Margin_Pct: 22.8, PE_Ratio: 13.4, Debt_to_Equity: 0.18, Dividend_Yield_Pct: 3.45, Beta_5Y: 0.88, Credit_Rating: 'AA', ESG_Score: 64, Outperform: false },
+      { Company_ID: 'EQ-007', Ticker: 'SAP', Company_Name: 'SAP SE', Sector: 'Technology', Industry: 'Enterprise Software', Country: 'Germany', Market_Cap_B: 260.4, Revenue_TTM_B: 34.2, EBITDA_Margin_Pct: 29.5, PE_Ratio: 37.8, Debt_to_Equity: 0.44, Dividend_Yield_Pct: 1.15, Beta_5Y: 1.05, Credit_Rating: 'A+', ESG_Score: 87, Outperform: true },
+      { Company_ID: 'EQ-008', Ticker: 'NVO', Company_Name: 'Novo Nordisk', Sector: 'Healthcare', Industry: 'Biotech', Country: 'Denmark', Market_Cap_B: 540.2, Revenue_TTM_B: 35.8, EBITDA_Margin_Pct: 46.1, PE_Ratio: 42.1, Debt_to_Equity: 0.22, Dividend_Yield_Pct: 1.30, Beta_5Y: 0.74, Credit_Rating: 'AA-', ESG_Score: 85, Outperform: true },
+      { Company_ID: 'EQ-009', Ticker: 'JPM', Company_Name: 'JPMorgan Chase', Sector: 'Financials', Industry: 'Banking', Country: 'USA', Market_Cap_B: 610.5, Revenue_TTM_B: 158.4, EBITDA_Margin_Pct: 38.6, PE_Ratio: 12.2, Debt_to_Equity: 1.25, Dividend_Yield_Pct: 2.35, Beta_5Y: 1.08, Credit_Rating: 'AA-', ESG_Score: 76, Outperform: true },
+      { Company_ID: 'EQ-010', Ticker: 'TM', Company_Name: 'Toyota Motor', Sector: 'Consumer', Industry: 'Automotive', Country: 'Japan', Market_Cap_B: 295.8, Revenue_TTM_B: 310.2, EBITDA_Margin_Pct: 14.2, PE_Ratio: 9.8, Debt_to_Equity: 1.10, Dividend_Yield_Pct: 2.80, Beta_5Y: 0.72, Credit_Rating: 'A+', ESG_Score: 73, Outperform: false },
+    ],
+    mapping: {
+      target: 'Outperform',
+      id: 'Company_ID',
+      numerical: ['Market_Cap_B', 'Revenue_TTM_B', 'EBITDA_Margin_Pct', 'PE_Ratio', 'Debt_to_Equity', 'Dividend_Yield_Pct', 'Beta_5Y', 'ESG_Score'],
+      categorical: ['Sector', 'Industry', 'Country', 'Credit_Rating'],
+      datetime: [],
+      ignored: ['Ticker', 'Company_Name'],
+    },
   },
   {
     id: 'ds-housing-202',
@@ -133,7 +199,19 @@ let datasetsCatalog = [
       { Property_ID: 'PROP-1012', Square_Feet: 1100, Bedrooms: 2, Bathrooms: 1.0, Neighborhood: 'East Bay', Year_Built: 1992, Price_USD: 275000 },
       { Property_ID: 'PROP-1013', Square_Feet: 2700, Bedrooms: 4, Bathrooms: 3.0, Neighborhood: 'Suburbs North', Year_Built: 2020, Price_USD: 585000 },
       { Property_ID: 'PROP-1014', Square_Feet: 1550, Bedrooms: 3, Bathrooms: 2.0, Neighborhood: 'Midtown', Year_Built: 2008, Price_USD: 365000 },
+      { Property_ID: 'PROP-1015', Square_Feet: 2050, Bedrooms: 3, Bathrooms: 2.5, Neighborhood: 'Downtown', Year_Built: 2015, Price_USD: 475000 },
+      { Property_ID: 'PROP-1016', Square_Feet: 3300, Bedrooms: 5, Bathrooms: 4.0, Neighborhood: 'West Hills', Year_Built: 2022, Price_USD: 810000 },
+      { Property_ID: 'PROP-1017', Square_Feet: 1750, Bedrooms: 3, Bathrooms: 2.0, Neighborhood: 'Lakeside', Year_Built: 2011, Price_USD: 415000 },
+      { Property_ID: 'PROP-1018', Square_Feet: 1350, Bedrooms: 2, Bathrooms: 1.5, Neighborhood: 'Old Town', Year_Built: 1989, Price_USD: 305000 },
     ],
+    mapping: {
+      target: 'Price_USD',
+      id: 'Property_ID',
+      numerical: ['Square_Feet', 'Bedrooms', 'Bathrooms', 'Year_Built'],
+      categorical: ['Neighborhood'],
+      datetime: [],
+      ignored: [],
+    },
   },
   {
     id: 'ds-iot-303',
@@ -171,7 +249,17 @@ let datasetsCatalog = [
       { device_id: 'DEV-110', temperature_c: 23.5, humidity_pct: 50.2, pressure_kpa: 101.2, status: 'ONLINE', alert: false },
       { device_id: 'DEV-111', temperature_c: 41.0, humidity_pct: 91.2, pressure_kpa: 96.5, status: 'CRITICAL', alert: true },
       { device_id: 'DEV-112', temperature_c: 22.9, humidity_pct: 46.7, pressure_kpa: 101.4, status: 'ONLINE', alert: false },
+      { device_id: 'DEV-113', temperature_c: 33.4, humidity_pct: 75.1, pressure_kpa: 99.0, status: 'WARNING', alert: true },
+      { device_id: 'DEV-114', temperature_c: 25.1, humidity_pct: 54.3, pressure_kpa: 101.1, status: 'ONLINE', alert: false },
     ],
+    mapping: {
+      target: 'alert',
+      id: 'device_id',
+      numerical: ['temperature_c', 'humidity_pct', 'pressure_kpa'],
+      categorical: ['status'],
+      datetime: [],
+      ignored: [],
+    },
   },
 ];
 
@@ -282,7 +370,7 @@ app.get('/api/datasets/:id', (req, res) => {
   });
 });
 
-// Get dataset preview (returns first 10-20 or requested limit rows)
+// Get paginated dataset preview: ?page=1&limit=10
 app.get('/api/datasets/:id/preview', (req, res) => {
   const { id } = req.params;
   const dataset = datasetsCatalog.find((d) => d.id === id || d.datasetId === id);
@@ -290,18 +378,107 @@ app.get('/api/datasets/:id/preview', (req, res) => {
     return res.status(404).json({ success: false, message: 'Dataset not found.' });
   }
 
-  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
-  const rows = (dataset.sampleRows || []).slice(0, limit);
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit || req.query.pageSize, 10) || 10), 100);
 
-  res.json({
+  let allAvailableRows = dataset.sampleRows || [];
+
+  // If local file exists, parse more rows for extended pagination
+  if (dataset.storagePath && fs.existsSync(dataset.storagePath)) {
+    try {
+      const fileExt = path.extname(dataset.storagePath).toLowerCase();
+      const fileContent = fs.readFileSync(dataset.storagePath, 'utf-8');
+      if (fileExt === '.csv' || fileExt === '.tsv') {
+        const delimiter = fileExt === '.tsv' ? '\t' : (dataset.delimiter || ',');
+        const parsed = parseCSV(fileContent, delimiter);
+        if (parsed.rows && parsed.rows.length > 0) {
+          allAvailableRows = parsed.rows;
+        }
+      }
+    } catch {
+      // Fallback to sampleRows
+    }
+  }
+
+  const totalAvailable = allAvailableRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalAvailable / limit));
+  const validPage = Math.min(page, totalPages);
+  const startIndex = (validPage - 1) * limit;
+  const paginatedRows = allAvailableRows.slice(startIndex, startIndex + limit);
+
+  return res.json({
     success: true,
     datasetId: dataset.id || dataset.datasetId,
     name: dataset.name,
     format: dataset.format,
-    totalRows: dataset.rowCount,
+    fileSizeBytes: dataset.sizeBytes,
+    totalRows: dataset.rowCount || totalAvailable,
+    totalAvailableRows: totalAvailable,
     columns: dataset.columns,
-    previewCount: rows.length,
-    rows: rows,
+    pagination: {
+      page: validPage,
+      limit,
+      totalPages,
+      totalCount: totalAvailable,
+      hasNextPage: validPage < totalPages,
+      hasPrevPage: validPage > 1,
+    },
+    previewCount: paginatedRows.length,
+    rows: paginatedRows,
+  });
+});
+
+// Get field mapping for dataset
+app.get('/api/datasets/:id/mapping', (req, res) => {
+  const { id } = req.params;
+  const dataset = datasetsCatalog.find((d) => d.id === id || d.datasetId === id);
+  if (!dataset) {
+    return res.status(404).json({ success: false, message: 'Dataset not found.' });
+  }
+
+  return res.json({
+    success: true,
+    datasetId: dataset.id || dataset.datasetId,
+    name: dataset.name,
+    columns: dataset.columns,
+    mapping: dataset.mapping || {
+      target: '',
+      id: '',
+      numerical: [],
+      categorical: [],
+      datetime: [],
+      ignored: [],
+    },
+  });
+});
+
+// Save field mapping for dataset
+app.post('/api/datasets/:id/mapping', (req, res) => {
+  const { id } = req.params;
+  const dataset = datasetsCatalog.find((d) => d.id === id || d.datasetId === id);
+  if (!dataset) {
+    return res.status(404).json({ success: false, message: 'Dataset not found.' });
+  }
+
+  const { mapping } = req.body;
+  if (!mapping || typeof mapping !== 'object') {
+    return res.status(400).json({ success: false, message: 'Invalid mapping object provided.' });
+  }
+
+  dataset.mapping = {
+    target: mapping.target || '',
+    id: mapping.id || '',
+    numerical: Array.isArray(mapping.numerical) ? mapping.numerical : [],
+    categorical: Array.isArray(mapping.categorical) ? mapping.categorical : [],
+    datetime: Array.isArray(mapping.datetime) ? mapping.datetime : [],
+    ignored: Array.isArray(mapping.ignored) ? mapping.ignored : [],
+    updatedAt: new Date().toISOString(),
+  };
+
+  return res.json({
+    success: true,
+    message: `Field mapping saved successfully for "${dataset.name}".`,
+    mapping: dataset.mapping,
   });
 });
 
@@ -364,6 +541,17 @@ app.post('/api/datasets/upload', upload.single('file'), (req, res) => {
     const datasetId = `ds-${Date.now()}`;
     const detectedFormat = (format || fileExt.replace('.', '')).toUpperCase();
 
+    // Default heuristic mapping
+    const colNames = parsed.columns.map((c) => c.name);
+    const targetGuess = colNames.find((n) => /churn|target|label|price|status|alert|fraud/i.test(n)) || '';
+    const idGuess = colNames.find((n) => /id$|^id|_id$/i.test(n)) || '';
+    const numCols = parsed.columns
+      .filter((c) => (c.type === 'Integer' || c.type === 'Float') && c.name !== idGuess && c.name !== targetGuess)
+      .map((c) => c.name);
+    const catCols = parsed.columns
+      .filter((c) => (c.type === 'Categorical' || c.type === 'String') && c.name !== idGuess && c.name !== targetGuess)
+      .map((c) => c.name);
+
     const newDataset = {
       id: datasetId,
       datasetId: datasetId,
@@ -380,8 +568,16 @@ app.post('/api/datasets/upload', upload.single('file'), (req, res) => {
       status: 'Ready',
       tags: parsedTags,
       columns: parsed.columns,
-      sampleRows: parsed.rows.slice(0, 20),
+      sampleRows: parsed.rows.slice(0, 50),
       storagePath: filePath,
+      mapping: {
+        target: targetGuess,
+        id: idGuess,
+        numerical: numCols,
+        categorical: catCols,
+        datetime: [],
+        ignored: [],
+      },
     };
 
     // Prepend to catalog
