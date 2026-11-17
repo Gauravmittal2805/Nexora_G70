@@ -166,6 +166,8 @@ const findDataset = async (id, userId = null) => {
   return SAMPLE_DATASETS.find(d => d.datasetId === id || d.id === id) || null;
 };
 
+const findUserDataset = findDataset;
+
 /**
  * Format a dataset document for API responses
  */
@@ -307,7 +309,7 @@ const uploadDataset = async (req, res, next) => {
     // 5. Create Dataset document in MongoDB bound to req.user._id
     const dataset = await Dataset.create({
       datasetId,
-      userId: req.user._id,
+      userId: req.user ? req.user._id : undefined,
       fileName,
       fileType,
       fileSize,
@@ -404,8 +406,8 @@ const getDatasets = async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const skip = (page - 1) * limit;
 
-    // Filter strictly by the authenticated user's ID
-    const query = { userId: req.user._id };
+    let totalCount = 0;
+    let datasets = [];
 
     if (mongoose.connection.readyState === 1) {
       const query = {};
@@ -492,6 +494,7 @@ const getDatasets = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       total: totalCount,
+      totalCount: totalCount,
       datasets: formatted,
       data: formatted,
       pagination: {
@@ -570,7 +573,7 @@ const getDatasetPreview = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
-    const dataset = await findUserDataset(req.params.id, req.user._id);
+    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
@@ -623,7 +626,7 @@ const getDatasetPreview = async (req, res, next) => {
  */
 const getDatasetProfile = async (req, res, next) => {
   try {
-    const dataset = await findUserDataset(req.params.id, req.user._id);
+    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
@@ -742,7 +745,7 @@ const getDatasetProfile = async (req, res, next) => {
  */
 const getFieldMapping = async (req, res, next) => {
   try {
-    const dataset = await findUserDataset(req.params.id, req.user._id);
+    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
@@ -781,7 +784,7 @@ const getFieldMapping = async (req, res, next) => {
  */
 const saveFieldMapping = async (req, res, next) => {
   try {
-    const dataset = await findUserDataset(req.params.id, req.user._id);
+    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
