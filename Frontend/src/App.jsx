@@ -19,6 +19,7 @@ import DatasetsList from './pages/DatasetsList';
 import DatasetUpload from './pages/DatasetUpload';
 import DatasetDetails from './pages/DatasetDetails';
 import FieldMapping from './pages/FieldMapping';
+import TransformationConfig from './pages/TransformationConfig';
 import Analytics from './pages/Analytics';
 import SettingsPage from './pages/SettingsPage';
 
@@ -74,6 +75,8 @@ function App() {
             <Route path="datasets/:id/profile" element={<DatasetDetails />} />
             <Route path="datasets/mapping" element={<FieldMapping />} />
             <Route path="datasets/:id/mapping" element={<FieldMapping />} />
+            <Route path="datasets/transform" element={<TransformationConfig />} />
+            <Route path="datasets/:id/transform" element={<TransformationConfig />} />
             <Route path="pipelines" element={<Navigate to="/dashboard/datasets" replace />} />
             <Route path="features" element={<Navigate to="/dashboard/datasets" replace />} />
             <Route path="models" element={<Navigate to="/dashboard/datasets" replace />} />
