@@ -3,27 +3,13 @@ const path = require('path');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Dataset = require('../models/Dataset');
-const {
-  parseCsvStream,
-  parseJsonStream,
-  readPreviewRowsFromStream
-} = require('../utils/streamParsers');
-const {
-  transformRecord,
-  transformDataset,
-  generateTransformConfigFromMapping,
-  applyMappingAndTransformations
-} = require('../utils/transformationEngine');
-const {
-  uploadDatasetFile,
-  getDatasetFileStream,
-  getDownloadUrl,
-  deleteDatasetFile,
-  LOCAL_STORAGE_DIR
-} = require('../utils/b2Storage');
+const { parseCsvStream, parseJsonStream } = require('../utils/streamParsers');
+const { uploadDatasetFile, getDownloadUrl, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
+const { profileDataset, profileInMemoryRecords } = require('../utils/datasetProfiler');
 
 /**
- * Preloaded catalog of sample datasets for fallback/seeding
+ * Helper to find a dataset by either its custom datasetId (UUID) or Mongo _id
+ * STRICTLY restricted by userId to ensure user isolation.
  */
 const SAMPLE_DATASETS = [
   {
@@ -219,7 +205,7 @@ const formatDatasetResponse = (d) => {
 /**
  * @desc    Upload CSV/JSON file to Backblaze B2 and save storage URL in MongoDB
  * @route   POST /api/datasets/upload
- * @access  Public / Private
+ * @access  Private (Authenticated users only)
  */
 const uploadDataset = async (req, res, next) => {
   if (!req.file) {
@@ -282,89 +268,111 @@ const uploadDataset = async (req, res, next) => {
       parseResult = await parseJsonStream(tempFilePath, fileType === 'jsonl', 20);
     }
 
-    // 2. Upload dataset file to Backblaze B2 (or local fallback storage) using AWS S3 SDK
+    // 2. Perform deep dataset profiling (data types, missing/null counts, unique values)
+    let profileResult = null;
+    try {
+      profileResult = await profileDataset(tempFilePath, fileType);
+      profileResult.profiledAt = new Date();
+    } catch (profErr) {
+      console.warn('Initial profiling warning (will fallback on demand):', profErr.message);
+    }
+
+    // 3. Upload file to Backblaze B2 (or local fallback storage)
     const storageResult = await uploadDatasetFile({
       filePath: tempFilePath,
       key: storageKey,
       mimeType
     });
 
-    // 3. Save dataset metadata and Backblaze B2 storage URL in MongoDB
-    let dataset;
-    if (mongoose.connection.readyState === 1) {
-      dataset = await Dataset.create({
-        datasetId,
-        userId: req.user ? req.user._id : undefined,
-        fileName,
-        fileType,
-        fileSize,
-        storageUrl: storageResult.storageUrl, // B2 Storage URL saved in MongoDB
-        name: datasetName,
-        description,
-        mimeType,
-        storage: {
-          provider: storageResult.provider,
-          bucket: storageResult.bucket,
-          key: storageResult.key,
-          localPath: storageResult.localPath,
-          eTag: storageResult.eTag
-        },
-        status: 'ready',
-        metadata: {
-          rowCount: parseResult.rowCount,
-          columnCount: parseResult.columnCount,
-          columns: parseResult.columns,
-          delimiter: parseResult.delimiter || ','
-        },
-        previewData: parseResult.previewData,
-        tags,
-        createdAt: new Date()
-      });
-    } else {
-      // In-memory record fallback if MongoDB is in offline mode
-      dataset = {
-        datasetId,
-        userId: req.user ? req.user._id : null,
-        fileName,
-        fileType,
-        fileSize,
-        storageUrl: storageResult.storageUrl,
-        name: datasetName,
-        description,
-        mimeType,
-        storage: {
-          provider: storageResult.provider,
-          bucket: storageResult.bucket,
-          key: storageResult.key,
-          localPath: storageResult.localPath,
-          eTag: storageResult.eTag
-        },
-        status: 'ready',
-        metadata: {
-          rowCount: parseResult.rowCount,
-          columnCount: parseResult.columnCount,
-          columns: parseResult.columns,
-          delimiter: parseResult.delimiter || ','
-        },
-        previewData: parseResult.previewData,
-        tags,
-        createdAt: new Date()
-      };
-      SAMPLE_DATASETS.unshift(dataset);
-    }
+    // 4. Compute heuristic default field mapping
+    const colNames = (parseResult.columns || []).map((c) => c.name);
+    const targetGuess = colNames.find((n) => /churn|target|label|price|status|alert|fraud|outcome|class/i.test(n)) || '';
+    const idGuess = colNames.find((n) => /id$|^id|_id$/i.test(n)) || '';
+    const numCols = (parseResult.columns || [])
+      .filter((c) => c.dataType === 'number' && c.name !== idGuess && c.name !== targetGuess)
+      .map((c) => c.name);
+    const catCols = (parseResult.columns || [])
+      .filter((c) => (c.dataType === 'string' || c.dataType === 'boolean') && c.name !== idGuess && c.name !== targetGuess)
+      .map((c) => c.name);
 
-    // 4. Clean up temporary multer spool file
+    const defaultMapping = {
+      target: targetGuess,
+      id: idGuess,
+      numerical: numCols,
+      categorical: catCols,
+      datetime: [],
+      ignored: []
+    };
+
+    // 5. Create Dataset document in MongoDB bound to req.user._id
+    const dataset = await Dataset.create({
+      datasetId,
+      userId: req.user._id,
+      fileName,
+      fileType,
+      fileSize,
+      storageUrl: storageResult.storageUrl,
+      name: datasetName,
+      description,
+      mimeType,
+      storage: {
+        provider: storageResult.provider,
+        bucket: storageResult.bucket,
+        key: storageResult.key,
+        localPath: storageResult.localPath,
+        eTag: storageResult.eTag
+      },
+      status: 'ready',
+      metadata: {
+        rowCount: parseResult.rowCount,
+        columnCount: parseResult.columnCount,
+        columns: parseResult.columns,
+        delimiter: parseResult.delimiter || ','
+      },
+      previewData: parseResult.previewData,
+      tags,
+      mapping: defaultMapping,
+      profile: profileResult,
+      createdAt: new Date()
+    });
+
+    // 6. Clean up temporary multer spool file
     if (fs.existsSync(tempFilePath)) {
       await fs.promises.unlink(tempFilePath).catch(() => {});
     }
 
-    const formatted = formatDatasetResponse(dataset);
+    const formattedDataset = {
+      id: dataset.datasetId,
+      datasetId: dataset.datasetId,
+      userId: dataset.userId,
+      name: dataset.name,
+      fileName: dataset.fileName,
+      description: dataset.description,
+      format: dataset.fileType.toUpperCase(),
+      fileType: dataset.fileType,
+      sizeBytes: dataset.fileSize,
+      fileSize: dataset.fileSize,
+      rowCount: dataset.metadata.rowCount,
+      columnCount: dataset.metadata.columnCount,
+      columns: (dataset.metadata.columns || []).map((c) => ({
+        name: c.name,
+        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
+        missingCount: c.nullCount || 0
+      })),
+      storageUrl: dataset.storageUrl,
+      createdAt: dataset.createdAt,
+      uploadedAt: dataset.createdAt,
+      metadata: dataset.metadata,
+      tags: dataset.tags,
+      status: 'Ready',
+      mapping: dataset.mapping
+    };
 
     return res.status(201).json({
       success: true,
-      message: `Dataset "${datasetName}" successfully uploaded to Backblaze B2 and saved!`,
-      dataset: formatted,
-      data: formatted
+      message: 'Dataset uploaded and saved successfully',
+      dataset: formattedDataset,
+      data: formattedDataset
     });
   } catch (error) {
     if (fs.existsSync(tempFilePath)) {
@@ -388,16 +396,16 @@ const uploadDataset = async (req, res, next) => {
 /**
  * @desc    Fetch uploaded datasets from MongoDB (with pagination, search, and filtering)
  * @route   GET /api/datasets
- * @access  Public / Private
+ * @access  Private (User can only access their own datasets)
  */
 const getDatasets = async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 10), 100);
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const skip = (page - 1) * limit;
 
-    let datasets = [];
-    let totalCount = 0;
+    // Filter strictly by the authenticated user's ID
+    const query = { userId: req.user._id };
 
     if (mongoose.connection.readyState === 1) {
       const query = {};
@@ -455,12 +463,37 @@ const getDatasets = async (req, res, next) => {
 
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
+    const formatted = datasets.map((d) => ({
+      id: d.datasetId,
+      datasetId: d.datasetId,
+      userId: d.userId,
+      name: d.name || d.fileName,
+      fileName: d.fileName,
+      description: d.description || '',
+      format: (d.fileType || 'csv').toUpperCase(),
+      fileType: d.fileType,
+      sizeBytes: d.fileSize,
+      fileSize: d.fileSize,
+      rowCount: d.metadata?.rowCount || 0,
+      columnCount: d.metadata?.columnCount || 0,
+      columns: (d.metadata?.columns || []).map((c) => ({
+        name: c.name,
+        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
+        missingCount: c.nullCount || 0
+      })),
+      storageUrl: d.storageUrl,
+      createdAt: d.createdAt,
+      uploadedAt: d.createdAt,
+      tags: d.tags || [],
+      status: 'Ready',
+      mapping: d.mapping
+    }));
+
     return res.status(200).json({
       success: true,
       total: totalCount,
-      totalCount,
-      datasets,
-      data: datasets,
+      datasets: formatted,
+      data: formatted,
       pagination: {
         currentPage: page,
         page,
@@ -479,7 +512,7 @@ const getDatasets = async (req, res, next) => {
 /**
  * @desc    Get dataset details by datasetId or _id
  * @route   GET /api/datasets/:id
- * @access  Public / Private
+ * @access  Private (Restricted to dataset owner)
  */
 const getDatasetById = async (req, res, next) => {
   try {
@@ -492,7 +525,31 @@ const getDatasetById = async (req, res, next) => {
       });
     }
 
-    const formatted = formatDatasetResponse(dataset);
+    const formatted = {
+      id: dataset.datasetId,
+      datasetId: dataset.datasetId,
+      userId: dataset.userId,
+      fileName: dataset.fileName,
+      name: dataset.name || dataset.fileName,
+      description: dataset.description,
+      fileType: dataset.fileType,
+      format: (dataset.fileType || 'csv').toUpperCase(),
+      fileSize: dataset.fileSize,
+      sizeBytes: dataset.fileSize,
+      storageUrl: dataset.storageUrl,
+      rowCount: dataset.metadata?.rowCount || 0,
+      columnCount: dataset.metadata?.columnCount || 0,
+      columns: (dataset.metadata?.columns || []).map((c) => ({
+        name: c.name,
+        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
+        missingCount: c.nullCount || 0
+      })),
+      createdAt: dataset.createdAt,
+      uploadedAt: dataset.createdAt,
+      tags: dataset.tags,
+      status: 'Ready',
+      mapping: dataset.mapping
+    };
 
     return res.status(200).json({
       success: true,
@@ -507,120 +564,52 @@ const getDatasetById = async (req, res, next) => {
 /**
  * @desc    Read CSV/JSON file using streaming with pagination and return requested preview records
  * @route   GET /api/datasets/:id/preview
- * @access  Public / Private
+ * @access  Private (Restricted to dataset owner)
  */
 const getDatasetPreview = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    // Allow users to request a specific number of preview records (default 20, clamp between 1 and 100)
-    const limit = Math.min(
-      Math.max(1, parseInt(req.query.limit || req.query.pageSize, 10) || 20),
-      100
-    );
-    // Support pagination with 1-based page index
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-
-    const dataset = await findDataset(id, req.user ? req.user._id : null);
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const dataset = await findUserDataset(req.params.id, req.user._id);
 
     if (!dataset) {
       return res.status(404).json({
         success: false,
-        message: 'Dataset not found.'
+        message: 'Dataset not found'
       });
     }
 
-    let paginatedRows = [];
-    let detectedColumns = dataset.metadata?.columns || dataset.columns || [];
-    let totalRows = dataset.metadata?.rowCount || dataset.rowCount || 0;
-    let hasNextPage = false;
-    let streamReadSuccess = false;
-    let streamErrorWarning = null;
-
-    // 1. Optimize reading from storage (Backblaze B2 / local file) using Node.js Streams
-    try {
-      const fileType = (dataset.fileType || 'csv').toLowerCase();
-      const delimiter = dataset.metadata?.delimiter || ',';
-
-      // For page 1 with moderate limit, use 1MB S3 byte range to optimize Backblaze B2 latency & bandwidth
-      const byteRange = (page === 1 && limit <= 50) ? 'bytes=0-1048575' : null;
-
-      const fileStream = await getDatasetFileStream({
-        provider: dataset.storage?.provider,
-        bucket: dataset.storage?.bucket,
-        key: dataset.storage?.key,
-        localPath: dataset.storage?.localPath || dataset.storagePath,
-        range: byteRange
-      });
-
-      if (fileStream) {
-        try {
-          const streamResult = await readPreviewRowsFromStream({
-            stream: fileStream,
-            fileType,
-            page,
-            limit,
-            delimiter
-          });
-
-          if (streamResult && streamResult.rows && streamResult.rows.length > 0) {
-            paginatedRows = streamResult.rows;
-            hasNextPage = streamResult.hasNextPage;
-            streamReadSuccess = true;
-            if (!detectedColumns || detectedColumns.length === 0) {
-              detectedColumns = streamResult.columns;
-            }
-          }
-        } catch (streamErr) {
-          streamErrorWarning = streamErr.message;
-        }
-      }
-    } catch (storageErr) {
-      console.warn(`Live storage preview read warning for ${id}:`, storageErr.message);
-    }
-
-    // 2. Fallback to cached previewData if live stream reading was unavailable or produced no rows
-    if (!streamReadSuccess && paginatedRows.length === 0) {
-      const cachedRows = (dataset.previewData && dataset.previewData.length > 0)
-        ? dataset.previewData
-        : (dataset.sampleRows || []);
-
-      if (cachedRows.length > 0) {
-        const totalAvailable = cachedRows.length;
-        const startIndex = (page - 1) * limit;
-        paginatedRows = cachedRows.slice(startIndex, startIndex + limit);
-        hasNextPage = startIndex + limit < totalAvailable;
-        if (!totalRows) totalRows = totalAvailable;
-      } else if (streamErrorWarning) {
-        // If stream failed due to malformed data and no cached rows exist, return 400 Bad Request
-        return res.status(400).json({
-          success: false,
-          message: `Unable to generate dataset preview: ${streamErrorWarning}`
-        });
-      }
-    }
-
-    const totalPages = totalRows > 0 ? Math.max(1, Math.ceil(totalRows / limit)) : (hasNextPage ? page + 1 : page);
+    const allRows = dataset.previewData || [];
+    const totalAvailable = allRows.length;
+    const totalPages = Math.max(1, Math.ceil(totalAvailable / limit));
+    const validPage = Math.min(Math.max(1, page), totalPages);
+    const startIndex = (validPage - 1) * limit;
+    const paginatedRows = allRows.slice(startIndex, startIndex + limit);
 
     return res.status(200).json({
       success: true,
-      datasetId: dataset.datasetId || dataset.id || id,
+      datasetId: dataset.datasetId,
       name: dataset.name || dataset.fileName,
-      fileName: dataset.fileName || dataset.name,
-      format: (dataset.fileType || 'CSV').toUpperCase(),
-      fileType: (dataset.fileType || 'csv').toLowerCase(),
-      fileSizeBytes: dataset.fileSize || dataset.sizeBytes || 0,
-      totalRows: totalRows || paginatedRows.length,
-      columns: detectedColumns,
-      previewCount: paginatedRows.length,
-      rows: paginatedRows,
+      fileName: dataset.fileName,
+      format: (dataset.fileType || 'csv').toUpperCase(),
+      fileSizeBytes: dataset.fileSize,
+      totalRows: dataset.metadata?.rowCount || totalAvailable,
+      totalAvailableRows: totalAvailable,
+      columns: (dataset.metadata?.columns || []).map((c) => ({
+        name: c.name,
+        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
+        missingCount: c.nullCount || 0
+      })),
       pagination: {
-        page,
+        page: validPage,
         limit,
         totalPages,
-        totalCount: totalRows || paginatedRows.length,
-        hasNextPage: hasNextPage || (totalRows > 0 && page < totalPages),
-        hasPrevPage: page > 1
-      }
+        totalCount: totalAvailable,
+        hasNextPage: validPage < totalPages,
+        hasPrevPage: validPage > 1
+      },
+      previewCount: paginatedRows.length,
+      rows: paginatedRows
     });
   } catch (error) {
     next(error);
@@ -628,9 +617,9 @@ const getDatasetPreview = async (req, res, next) => {
 };
 
 /**
- * @desc    Get dataset profiling statistics and column metadata
+ * @desc    Get dataset profiling results (Data types, missing counts, unique values, stats)
  * @route   GET /api/datasets/:id/profile
- * @access  Private
+ * @access  Private (Restricted to dataset owner)
  */
 const getDatasetProfile = async (req, res, next) => {
   try {
@@ -643,104 +632,187 @@ const getDatasetProfile = async (req, res, next) => {
       });
     }
 
-    const rows = dataset.previewData || [];
-    const rowCount = dataset.metadata?.rowCount || rows.length || 0;
-    const columns = dataset.metadata?.columns || [];
-    const columnCount = columns.length;
+    const forceRefresh = req.query.refresh === 'true' || req.query.recompute === 'true';
 
-    let totalMissingCells = 0;
-    const profiledColumns = columns.map((col, idx) => {
-      const colName = col.name;
-      const colType = col.dataType || col.type || 'string';
+    // If already profiled and no refresh is requested, return cached profile
+    if (dataset.profile && !forceRefresh) {
+      return res.status(200).json({
+        success: true,
+        datasetId: dataset.datasetId,
+        fileName: dataset.fileName,
+        name: dataset.name || dataset.fileName,
+        fileType: dataset.fileType,
+        fileSize: dataset.fileSize,
+        ...dataset.profile
+      });
+    }
 
-      let nullCount = typeof col.nullCount === 'number' ? col.nullCount : 0;
-      if (nullCount === 0 && rows.length > 0) {
-        nullCount = rows.filter(
-          (r) => r[colName] === null || r[colName] === undefined || r[colName] === ''
-        ).length;
-      }
-      totalMissingCells += nullCount;
+    // Compute profile from the dataset's stored file or preview data
+    let profileResult = null;
+    const localPath = dataset.storage?.localPath;
 
-      const values = rows
-        .map((r) => r[colName])
-        .filter((v) => v !== null && v !== undefined && v !== '');
-      const distinctSet = new Set(values.map(String));
-      const sampleValues =
-        col.sampleValues && col.sampleValues.length > 0
-          ? col.sampleValues
-          : Array.from(distinctSet).slice(0, 5);
+    if (localPath && fs.existsSync(localPath)) {
+      profileResult = await profileDataset(localPath, dataset.fileType);
+    } else if (dataset.previewData && dataset.previewData.length > 0) {
+      profileResult = profileInMemoryRecords(dataset.previewData);
+    } else {
+      // Reconstruct fallback profile from metadata columns
+      const totalRecs = dataset.metadata?.rowCount || 0;
+      const cols = (dataset.metadata?.columns || []).map((c) => {
+        const nulls = c.nullCount || 0;
+        const nonNulls = Math.max(0, totalRecs - nulls);
+        const typeMap = {
+          number: 'Number',
+          boolean: 'Boolean',
+          date: 'Date',
+          string: 'String'
+        };
+        const resolvedType = typeMap[c.dataType] || 'String';
+        const sampleArr = c.sampleValues || [];
 
-      let min = null,
-        max = null,
-        mean = null;
-      if (colType === 'number' || colType === 'Integer' || colType === 'Float') {
-        const numVals = values.map(Number).filter((v) => !isNaN(v));
-        if (numVals.length > 0) {
-          min = Math.min(...numVals);
-          max = Math.max(...numVals);
-          mean = Number((numVals.reduce((a, b) => a + b, 0) / numVals.length).toFixed(2));
+        return {
+          name: c.name,
+          dataType: resolvedType,
+          totalRecords: totalRecs,
+          nonNullCount: nonNulls,
+          nullCount: nulls,
+          missingCount: nulls,
+          missingPercentage: totalRecs > 0 ? Number(((nulls / totalRecs) * 100).toFixed(2)) : 0,
+          distinctCount: sampleArr.length,
+          isUnique: totalRecs > 0 && sampleArr.length === totalRecs,
+          uniqueValues: sampleArr.slice(0, 50),
+          uniqueValuesCount: Math.min(sampleArr.length, 50),
+          hasMoreUniqueValues: sampleArr.length > 50,
+          stats: {},
+          sampleValues: sampleArr.slice(0, 5)
+        };
+      });
+
+      let totalMissing = 0;
+      const typeSummary = { String: 0, Number: 0, Boolean: 0, Date: 0 };
+      cols.forEach((col) => {
+        totalMissing += col.missingCount;
+        typeSummary[col.dataType] = (typeSummary[col.dataType] || 0) + 1;
+      });
+
+      profileResult = {
+        totalRecords: totalRecs,
+        totalColumns: cols.length,
+        columns: cols,
+        summary: {
+          totalRecords: totalRecs,
+          totalColumns: cols.length,
+          totalCells: totalRecs * cols.length,
+          missingCells: totalMissing,
+          overallMissingPercentage: totalRecs * cols.length > 0
+            ? Number(((totalMissing / (totalRecs * cols.length)) * 100).toFixed(2))
+            : 0,
+          columnDataTypes: typeSummary
         }
-      }
-
-      const missingPercentage =
-        rowCount > 0 ? Number(((nullCount / rowCount) * 100).toFixed(1)) : 0;
-
-      return {
-        id: idx + 1,
-        name: colName,
-        dataType: colType,
-        nullCount,
-        missingCount: nullCount,
-        missingPercentage,
-        distinctCount: distinctSet.size,
-        sampleValues,
-        stats: { min, max, mean }
       };
-    });
+    }
 
-    const totalCells = rowCount * columnCount;
-    const completenessScore =
-      totalCells > 0
-        ? Math.max(
-            0,
-            Math.min(100, Math.round(((totalCells - totalMissingCells) / totalCells) * 100))
-          )
-        : 100;
-    const columnsWithMissing = profiledColumns.filter((c) => c.nullCount > 0).length;
-
-    const typeCounts = profiledColumns.reduce((acc, c) => {
-      const t = String(c.dataType).toLowerCase();
-      if (t.includes('int') || t.includes('float') || t === 'number')
-        acc.numeric = (acc.numeric || 0) + 1;
-      else if (t.includes('cat')) acc.categorical = (acc.categorical || 0) + 1;
-      else if (t.includes('date') || t.includes('time')) acc.datetime = (acc.datetime || 0) + 1;
-      else if (t.includes('bool')) acc.boolean = (acc.boolean || 0) + 1;
-      else acc.text = (acc.text || 0) + 1;
-      return acc;
-    }, {});
+    // Persist computed profile to document
+    const finalProfile = {
+      ...profileResult,
+      profiledAt: new Date().toISOString()
+    };
+    dataset.profile = finalProfile;
+    await dataset.save();
 
     return res.status(200).json({
       success: true,
-      profile: {
-        datasetId: dataset.datasetId,
-        name: dataset.name,
-        fileName: dataset.fileName,
-        format: dataset.fileType?.toUpperCase() || 'CSV',
-        fileSizeBytes: dataset.fileSize || 0,
-        rowCount,
-        columnCount,
-        totalCells,
-        totalMissingCells,
-        completenessScore,
-        columnsWithMissing,
-        cleanColumnsCount: columnCount - columnsWithMissing,
-        typeCounts,
-        createdAt: dataset.createdAt || new Date().toISOString(),
-        status: dataset.status || 'Ready',
-        tags: dataset.tags || ['Tabular'],
-        columns: profiledColumns,
-        previewRows: rows.slice(0, 20)
+      datasetId: dataset.datasetId,
+      fileName: dataset.fileName,
+      name: dataset.name || dataset.fileName,
+      fileType: dataset.fileType,
+      fileSize: dataset.fileSize,
+      ...finalProfile
+    });
+  } catch (error) {
+    console.error('Dataset Profile API Error:', error);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get field mapping for dataset
+ * @route   GET /api/datasets/:id/mapping
+ * @access  Private (Restricted to dataset owner)
+ */
+const getFieldMapping = async (req, res, next) => {
+  try {
+    const dataset = await findUserDataset(req.params.id, req.user._id);
+
+    if (!dataset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dataset not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      datasetId: dataset.datasetId,
+      name: dataset.name || dataset.fileName,
+      columns: (dataset.metadata?.columns || []).map((c) => ({
+        name: c.name,
+        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
+        missingCount: c.nullCount || 0
+      })),
+      mapping: dataset.mapping || {
+        target: '',
+        id: '',
+        numerical: [],
+        categorical: [],
+        datetime: [],
+        ignored: []
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Save/update dataset field mapping
+ * @route   POST /api/datasets/:id/mapping
+ * @access  Private (Restricted to dataset owner)
+ */
+const saveFieldMapping = async (req, res, next) => {
+  try {
+    const dataset = await findUserDataset(req.params.id, req.user._id);
+
+    if (!dataset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dataset not found'
+      });
+    }
+
+    const { mapping } = req.body;
+    if (!mapping || typeof mapping !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid mapping object provided'
+      });
+    }
+
+    dataset.mapping = {
+      target: mapping.target || '',
+      id: mapping.id || '',
+      numerical: Array.isArray(mapping.numerical) ? mapping.numerical : [],
+      categorical: Array.isArray(mapping.categorical) ? mapping.categorical : [],
+      datetime: Array.isArray(mapping.datetime) ? mapping.datetime : [],
+      ignored: Array.isArray(mapping.ignored) ? mapping.ignored : []
+    };
+
+    await dataset.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Field mapping saved successfully for "${dataset.name || dataset.fileName}".`,
+      mapping: dataset.mapping
     });
   } catch (error) {
     next(error);
@@ -750,7 +822,7 @@ const getDatasetProfile = async (req, res, next) => {
 /**
  * @desc    Get download URL (presigned B2 or direct)
  * @route   GET /api/datasets/:id/download
- * @access  Public / Private
+ * @access  Private (Restricted to dataset owner)
  */
 const getDatasetDownloadUrl = async (req, res, next) => {
   try {
@@ -787,7 +859,7 @@ const getDatasetDownloadUrl = async (req, res, next) => {
 /**
  * @desc    Delete dataset record from MongoDB and delete object from Backblaze B2
  * @route   DELETE /api/datasets/:id
- * @access  Public / Private
+ * @access  Private (Restricted to dataset owner)
  */
 const deleteDataset = async (req, res, next) => {
   try {
@@ -997,6 +1069,8 @@ module.exports = {
   getDatasetById,
   getDatasetPreview,
   getDatasetProfile,
+  getFieldMapping,
+  saveFieldMapping,
   getDatasetDownloadUrl,
   deleteDataset,
   getDatasetMapping,

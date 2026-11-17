@@ -464,136 +464,21 @@ export const datasetService = {
   },
 
   /**
-   * Fetch comprehensive dataset profiling statistics and column information
+   * Fetch complete dataset profiling metrics (types, nulls, unique values, summary stats)
+   * GET /api/datasets/:id/profile
    */
-  getDatasetProfile: async (id) => {
+  getDatasetProfile: async (id, { refresh = false } = {}) => {
     try {
-      const res = await api.get(`/datasets/${id}/profile`);
-      if (res.data && res.data.success && res.data.profile) {
-        return {
-          success: true,
-          profile: res.data.profile,
-          isOffline: false,
-        };
+      const url = `/datasets/${id}/profile${refresh ? "?refresh=true" : ""}`;
+      const res = await api.get(url);
+      if (res.data && res.data.success) {
+        return res.data;
       }
+      return res.data;
     } catch (err) {
-      console.warn(
-        `Profile API call failed for dataset ${id}, falling back to local computation:`,
-        err.message
-      );
+      console.warn(`Dataset profile API call failed for ${id}:`, err.message);
+      throw err;
     }
-
-    // Client-side fallback: compute profiling from local dataset cache
-    const dataset = datasetService.getDatasetById(id);
-    if (!dataset) {
-      throw new Error(`Dataset with ID "${id}" could not be found.`);
-    }
-
-    const rows = dataset.sampleRows || [];
-    const rowCount = dataset.rowCount || rows.length || 0;
-    const columns = dataset.columns || [];
-    const columnCount = columns.length;
-
-    let totalMissingCells = 0;
-    const profiledColumns = columns.map((col, idx) => {
-      const colName = col.name;
-      const colType = col.type || col.dataType || col.inferredType || 'String';
-
-      let nullCount =
-        typeof col.missingCount === 'number'
-          ? col.missingCount
-          : typeof col.nullCount === 'number'
-          ? col.nullCount
-          : 0;
-      if (nullCount === 0 && rows.length > 0) {
-        nullCount = rows.filter(
-          (r) => r[colName] === null || r[colName] === undefined || r[colName] === ''
-        ).length;
-      }
-      totalMissingCells += nullCount;
-
-      const values = rows
-        .map((r) => r[colName])
-        .filter((v) => v !== null && v !== undefined && v !== '');
-      const distinctSet = new Set(values.map(String));
-      const sampleValues =
-        col.sampleValues && col.sampleValues.length > 0
-          ? col.sampleValues
-          : Array.from(distinctSet).slice(0, 5);
-
-      let min = null,
-        max = null,
-        mean = null;
-      if (colType === 'Integer' || colType === 'Float' || colType === 'number') {
-        const numVals = values.map(Number).filter((v) => !isNaN(v));
-        if (numVals.length > 0) {
-          min = Math.min(...numVals);
-          max = Math.max(...numVals);
-          mean = Number((numVals.reduce((a, b) => a + b, 0) / numVals.length).toFixed(2));
-        }
-      }
-
-      const missingPercentage =
-        rowCount > 0 ? Number(((nullCount / rowCount) * 100).toFixed(1)) : 0;
-
-      return {
-        id: idx + 1,
-        name: colName,
-        dataType: colType,
-        nullCount,
-        missingCount: nullCount,
-        missingPercentage,
-        distinctCount: distinctSet.size,
-        sampleValues,
-        stats: { min, max, mean },
-      };
-    });
-
-    const totalCells = rowCount * columnCount;
-    const completenessScore =
-      totalCells > 0
-        ? Math.max(
-            0,
-            Math.min(100, Math.round(((totalCells - totalMissingCells) / totalCells) * 100))
-          )
-        : 100;
-    const columnsWithMissing = profiledColumns.filter((c) => c.nullCount > 0).length;
-
-    const typeCounts = profiledColumns.reduce((acc, c) => {
-      const t = String(c.dataType).toLowerCase();
-      if (t.includes('int') || t.includes('float') || t === 'number')
-        acc.numeric = (acc.numeric || 0) + 1;
-      else if (t.includes('cat')) acc.categorical = (acc.categorical || 0) + 1;
-      else if (t.includes('date') || t.includes('time')) acc.datetime = (acc.datetime || 0) + 1;
-      else if (t.includes('bool')) acc.boolean = (acc.boolean || 0) + 1;
-      else acc.text = (acc.text || 0) + 1;
-      return acc;
-    }, {});
-
-    return {
-      success: true,
-      profile: {
-        datasetId: dataset.id || dataset.datasetId,
-        name: dataset.name,
-        fileName: dataset.fileName || dataset.name,
-        format: dataset.format,
-        fileSizeBytes: dataset.sizeBytes || dataset.fileSize || 0,
-        rowCount,
-        columnCount,
-        totalCells,
-        totalMissingCells,
-        completenessScore,
-        columnsWithMissing,
-        cleanColumnsCount: columnCount - columnsWithMissing,
-        typeCounts,
-        createdAt: dataset.uploadedAt || dataset.createdAt || new Date().toISOString(),
-        status: dataset.status || 'Ready',
-        tags: dataset.tags || ['Tabular'],
-        columns: profiledColumns,
-        previewRows: rows.slice(0, 20),
-      },
-      isOffline: true,
-    };
   },
 
   /**

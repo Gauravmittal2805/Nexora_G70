@@ -126,8 +126,11 @@ const datasetSchema = new mongoose.Schema({
     numerical: [{ type: String }],
     categorical: [{ type: String }],
     datetime: [{ type: String }],
-    ignored: [{ type: String }],
-    updatedAt: { type: Date }
+    ignored: [{ type: String }]
+  },
+  profile: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   },
   createdAt: {
     type: Date,

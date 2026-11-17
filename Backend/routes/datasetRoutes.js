@@ -8,6 +8,8 @@ const {
   getDatasetById,
   getDatasetPreview,
   getDatasetProfile,
+  getFieldMapping,
+  saveFieldMapping,
   getDatasetDownloadUrl,
   deleteDataset,
   getDatasetMapping,
@@ -36,6 +38,12 @@ router.get('/:id/preview', getDatasetPreview);
 
 // @route   GET /api/datasets/:id/profile
 router.get('/:id/profile', getDatasetProfile);
+
+// @route   GET /api/datasets/:id/mapping
+router.get('/:id/mapping', getFieldMapping);
+
+// @route   POST /api/datasets/:id/mapping
+router.post('/:id/mapping', saveFieldMapping);
 
 // @route   GET /api/datasets/:id/download
 router.get('/:id/download', getDatasetDownloadUrl);

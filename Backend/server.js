@@ -14,7 +14,7 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// 1. Connect to MongoDB Atlas / Local MongoDB
+// Connect to MongoDB Database
 connectDB();
 
 // 2. Verify Backblaze B2 bucket connection on startup
@@ -32,120 +32,11 @@ if (isB2Configured()) {
 
 // 3. Middlewares
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Storage directory setup for local uploads fallback
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Multer file upload configuration
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedExts = ['.csv', '.json', '.xlsx', '.tsv'];
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (allowedExts.includes(ext) || file.mimetype === 'text/csv' || file.mimetype === 'application/json') {
-    cb(null, true);
-  } else {
-    cb(new Error(`Unsupported file type: ${ext}. Supported: ${allowedExts.join(', ')}`));
-  }
-};
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-  fileFilter: fileFilter,
-});
-
-// Clean initial catalog: No preloaded mock datasets
-let datasetsCatalog = [];
-
-// Helper: Infer data type
-function inferType(values) {
-  const nonNull = values.filter((v) => v !== null && v !== undefined && v !== '');
-  if (nonNull.length === 0) return 'String';
-
-  let isInt = true;
-  let isFloat = true;
-  let isBool = true;
-
-  for (const v of nonNull.slice(0, 50)) {
-    const s = String(v).trim().toLowerCase();
-    if (!['true', 'false', '0', '1', 'yes', 'no'].includes(s)) isBool = false;
-    if (!/^-?\d+$/.test(s)) isInt = false;
-    if (!/^-?\d+(\.\d+)?$/.test(s)) isFloat = false;
-  }
-
-  if (isBool) return 'Boolean';
-  if (isInt) return 'Integer';
-  if (isFloat) return 'Float';
-  return 'String';
-}
-
-// Helper: Parse CSV
-function parseCSV(content, delimiter = ',') {
-  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return { headers: [], columns: [], rows: [], totalRows: 0 };
-
-  const splitLine = (text) => {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      if (char === '"' || char === "'") inQuotes = !inQuotes;
-      else if (char === delimiter && !inQuotes) {
-        result.push(current.trim().replace(/^["']|["']$/g, ''));
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current.trim().replace(/^["']|["']$/g, ''));
-    return result;
-  };
-
-  const headers = splitLine(lines[0]);
-  const rows = [];
-  for (const line of lines.slice(1, 101)) {
-    const values = splitLine(line);
-    const obj = {};
-    headers.forEach((h, idx) => {
-      let rawVal = values[idx] !== undefined ? values[idx] : '';
-      if (/^-?\d+$/.test(rawVal)) {
-        obj[h] = parseInt(rawVal, 10);
-      } else if (/^-?\d+(\.\d+)?$/.test(rawVal)) {
-        obj[h] = parseFloat(rawVal);
-      } else {
-        obj[h] = rawVal;
-      }
-    });
-    rows.push(obj);
-  }
-
-  const columns = headers.map((h) => {
-    const colVals = rows.map((r) => r[h]);
-    return {
-      name: h,
-      type: inferType(colVals),
-      missingCount: colVals.filter((v) => v === '' || v === null || v === undefined).length,
-    };
-  });
-
-  return { headers, columns, rows, totalRows: lines.length - 1 };
-}
+// Static directory for uploaded datasets (when local storage fallback is used)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -512,12 +403,17 @@ app.delete('/api/datasets/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'Dataset not found.' });
   }
 
-  res.json({ success: true, message: 'Dataset deleted successfully.' });
-});
+// Protected Dataset Routes (Requires JWT token, User-isolated datasets)
+app.use('/api/datasets', datasetRoutes);
 
-// 5. Error handling middleware
-app.use(notFound);
-app.use(errorHandler);
+// Global Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled Server Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error'
+  });
+});
 
 // Start Server
 if (require.main === module) {
