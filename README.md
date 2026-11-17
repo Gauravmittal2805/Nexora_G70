@@ -60,6 +60,18 @@ Nexora combines the best aspects of these platforms into a **single lightweight 
 
 ---
 
+## 🛠 Tech Stack
+
+### Frontend
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| React | 19.3.1 | UI framework |
+| React Router DOM | 7.18.5 | Client-side routing |
+| Vite | 8.x | Build tool & dev server |
+| Tailwind CSS | 4.x | Utility-first styling |
+| Lucide React | 1.70.0 | Icon library |
+| Axios | 1.21.1 | HTTP client |
+| oxlint | latest | Linting (zero lint errors enforced) |
 
 ### Backend
 | Technology | Version | Purpose |
