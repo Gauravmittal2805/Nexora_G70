@@ -1,106 +1,51 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import datasetService from '../services/datasetService';
 import DatasetPreviewTable from '../components/datasets/DatasetPreviewTable';
 import {
-  ArrowRight,
-  ArrowLeft,
-  Sparkles,
-  RotateCcw,
+  FileSpreadsheet,
   CheckCircle2,
   AlertTriangle,
-  GripVertical,
-  Crosshair,
-  Key,
-  Hash,
-  Tag,
-  Calendar,
-  EyeOff,
+  Layers,
+  Sparkles,
   Search,
-  Check,
+  Plus,
+  Trash2,
+  RotateCcw,
+  Eye,
+  Link2,
+  Play,
+  GripVertical,
+  Target,
+  ArrowRight,
+  Database,
   X,
-  FileSpreadsheet,
-  SlidersHorizontal,
+  Check,
   ChevronRight,
+  Save,
+  Wand2,
+  SlidersHorizontal,
+  RefreshCw,
+  FolderOpen,
+  ArrowLeft,
 } from 'lucide-react';
 
-const TARGET_SLOTS = [
-  {
-    key: 'target',
-    label: 'Target Label / Prediction Variable',
-    description: 'The primary target variable the machine learning model will predict.',
-    icon: Crosshair,
-    color: 'rose',
-    accentBorder: 'border-rose-500/50',
-    accentBg: 'bg-rose-950/20',
-    badgeStyle: 'bg-rose-950 text-rose-300 border-rose-500/40',
-    isSingle: true,
-    required: true,
-  },
-  {
-    key: 'id',
-    label: 'Primary Identifier / Entity Key',
-    description: 'Unique record identifier. Will be tracked but excluded from feature training to prevent leakage.',
-    icon: Key,
-    color: 'amber',
-    accentBorder: 'border-amber-500/50',
-    accentBg: 'bg-amber-950/20',
-    badgeStyle: 'bg-amber-950 text-amber-300 border-amber-500/40',
-    isSingle: true,
-    required: false,
-  },
-  {
-    key: 'numerical',
-    label: 'Numerical Predictor Features',
-    description: 'Continuous and discrete numerical metrics for scaling, imputation, and mathematical modeling.',
-    icon: Hash,
-    color: 'cyan',
-    accentBorder: 'border-cyan-500/50',
-    accentBg: 'bg-cyan-950/20',
-    badgeStyle: 'bg-cyan-950 text-cyan-300 border-cyan-500/40',
-    isSingle: false,
-    required: false,
-  },
-  {
-    key: 'categorical',
-    label: 'Categorical Predictor Features',
-    description: 'Discrete text and enumerated categories for one-hot encoding, ordinal encoding, and embeddings.',
-    icon: Tag,
-    color: 'purple',
-    accentBorder: 'border-purple-500/50',
-    accentBg: 'bg-purple-950/20',
-    badgeStyle: 'bg-purple-950 text-purple-300 border-purple-500/40',
-    isSingle: false,
-    required: false,
-  },
-  {
-    key: 'datetime',
-    label: 'Temporal / Datetime Features',
-    description: 'Timestamps, dates, or year markers for windowing, lag derivation, and time-series decomposition.',
-    icon: Calendar,
-    color: 'pink',
-    accentBorder: 'border-pink-500/50',
-    accentBg: 'bg-pink-950/20',
-    badgeStyle: 'bg-pink-950 text-pink-300 border-pink-500/40',
-    isSingle: false,
-    required: false,
-  },
-  {
-    key: 'ignored',
-    label: 'Excluded / Ignored Columns',
-    description: 'Free text notes, high-cardinality IDs, or redundant columns omitted from downstream analytics and export.',
-    icon: EyeOff,
-    color: 'slate',
-    accentBorder: 'border-slate-700',
-    accentBg: 'bg-slate-900/40',
-    badgeStyle: 'bg-slate-800 text-slate-400 border-slate-700',
-    isSingle: false,
-    required: false,
-  },
+const TRANSFORMATION_OPTIONS = [
+  { id: 'none', label: 'Pass-through (Raw)', description: 'Keep source value as-is' },
+  { id: 'trim', label: 'Trim Whitespace', description: 'Remove leading and trailing spaces' },
+  { id: 'uppercase', label: 'UPPERCASE', description: 'Convert all letters to uppercase' },
+  { id: 'lowercase', label: 'lowercase', description: 'Convert all letters to lowercase' },
+  { id: 'to_number', label: 'Cast to Number', description: 'Parse string into integer/float' },
+  { id: 'to_boolean', label: 'Cast to Boolean', description: 'Parse yes/no/true/false to boolean' },
+  { id: 'remove_empty', label: 'Remove Empty Cells', description: 'Strip null and empty string values' },
 ];
 
 const FieldMapping = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Active Tab: 'workspace' | 'transformations' | 'preview' | 'engine'
+  const [activeTab, setActiveTab] = useState('workspace');
 
   // Catalog & active dataset state
   const [datasets, setDatasets] = useState([]);
@@ -110,70 +55,77 @@ const FieldMapping = () => {
   const [currentDataset, setCurrentDataset] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Field mapping state
-  const [mapping, setMapping] = useState({
-    target: '',
-    id: '',
-    numerical: [],
-    categorical: [],
-    datetime: [],
-    ignored: [],
-  });
+  // Search in source fields
+  const [sourceSearch, setSourceSearch] = useState('');
 
-  // Source column filter & search
-  const [columnSearch, setColumnSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('ALL');
+  // Destination fields list: [{ id, name, type, required }]
+  const [destinationFields, setDestinationFields] = useState([]);
+  const [newDestFieldName, setNewDestFieldName] = useState('');
+  const [newDestFieldType, setNewDestFieldType] = useState('String');
 
-  // Drag state (source cards still draggable for future use)
-  const [draggedColumn, setDraggedColumn] = useState(null);
+  // Active Connections: [{ id, sourceField, destField, transformation }]
+  const [connections, setConnections] = useState([]);
 
-  // Preview Drawer
-  const [showPreviewDrawer, setShowPreviewDrawer] = useState(false);
-  const [previewData, setPreviewData] = useState(null);
+  // Selection states for click-to-connect workflow
+  const [selectedSourceCol, setSelectedSourceCol] = useState(null);
+  const [selectedDestField, setSelectedDestField] = useState(null);
+
+  // Live Output Preview state
+  const [previewRows, setPreviewRows] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewPage, setPreviewPage] = useState(1);
-  const [previewPageSize, setPreviewPageSize] = useState(10);
 
-  // Custom destination labels: { [sourceColName]: 'user typed label' }
-  const [columnLabels, setColumnLabels] = useState({});
-
-  // Notification state
+  // Notifications
   const [notification, setNotification] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Load mapping configuration for given dataset
-  const loadDatasetMapping = useCallback(async (dataset) => {
-    try {
-      const saved = await datasetService.getFieldMapping(dataset.id);
-      if (saved && (saved.target || saved.numerical?.length || saved.categorical?.length)) {
-        setMapping(saved);
-      } else {
-        const suggested = datasetService.autoSuggestMapping
-          ? datasetService.autoSuggestMapping(dataset.columns || [])
-          : dataset.mapping || {
-              target: '',
-              id: '',
-              numerical: [],
-              categorical: [],
-              datetime: [],
-              ignored: [],
-            };
-        setMapping(suggested);
-      }
-    } catch {
-      setMapping(
-        dataset.mapping || {
-          target: '',
-          id: '',
-          numerical: [],
-          categorical: [],
-          datetime: [],
-          ignored: [],
-        }
+  const showNotification = (type, message) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Load dataset mapping and initialize connections/destinations
+  const loadDatasetState = useCallback((dataset) => {
+    if (!dataset) return;
+
+    const sourceCols = dataset.columns || [];
+
+    // Check if dataset has saved connections in mapping or storage
+    const savedConnections = dataset.mapping?.connections || [];
+    const savedDestinations = dataset.mapping?.destinations || [];
+
+    if (savedConnections.length > 0) {
+      setConnections(savedConnections);
+      setDestinationFields(
+        savedDestinations.length > 0
+          ? savedDestinations
+          : Array.from(new Set(savedConnections.map((c) => c.destField))).map((name) => ({
+              id: `dest-${name}`,
+              name,
+              type: 'String',
+            }))
       );
+    } else {
+      // Initialize with destinations matching source columns
+      const initialDestinations = sourceCols.map((c) => ({
+        id: `dest-${c.name}`,
+        name: c.name,
+        type: c.type || 'String',
+      }));
+
+      // Heuristically map exact name matches by default
+      const initialConnections = sourceCols.map((c) => ({
+        id: `conn-${c.name}-${c.name}`,
+        sourceField: c.name,
+        destField: c.name,
+        transformation: 'none',
+      }));
+
+      setDestinationFields(initialDestinations);
+      setConnections(initialConnections);
     }
   }, []);
 
-  // Load all datasets from service / API
+  // Fetch datasets catalog
   useEffect(() => {
     let active = true;
     datasetService
@@ -183,7 +135,6 @@ const FieldMapping = () => {
         const list = Array.isArray(res) ? res : res.datasets || [];
         setDatasets(list);
 
-        // Determine active dataset
         const paramId = searchParams.get('datasetId');
         const matched = list.find((d) => d.id === paramId || d.datasetId === paramId);
         const activeItem = matched || list[0] || null;
@@ -191,7 +142,7 @@ const FieldMapping = () => {
         if (activeItem) {
           setSelectedDatasetId(activeItem.id);
           setCurrentDataset(activeItem);
-          loadDatasetMapping(activeItem);
+          loadDatasetState(activeItem);
         }
       })
       .catch((err) => {
@@ -204,645 +155,1053 @@ const FieldMapping = () => {
     return () => {
       active = false;
     };
-  }, [searchParams, loadDatasetMapping]);
+  }, [searchParams, loadDatasetState]);
 
-  // Switch dataset
+  // Dataset switcher
   const handleSelectDataset = (datasetId) => {
     setSelectedDatasetId(datasetId);
     setSearchParams({ datasetId });
     const ds = datasets.find((d) => d.id === datasetId || d.datasetId === datasetId);
     if (ds) {
       setCurrentDataset(ds);
-      loadDatasetMapping(ds);
-      setPreviewData(null);
-      setPreviewPage(1);
+      loadDatasetState(ds);
+      setSelectedSourceCol(null);
+      setSelectedDestField(null);
     }
   };
 
-  // Drag and drop handlers
-  const handleDragStart = (e, col) => {
-    setDraggedColumn(col);
-    e.dataTransfer.setData('text/plain', col.name);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    setDraggedColumn(null);
-  };
-
-  // Assign column to target slot (removes from other slots first)
-  const assignColumnToSlot = (colName, targetSlotKey) => {
-    setMapping((prev) => {
-      const next = {
-        target: prev.target === colName ? '' : prev.target,
-        id: prev.id === colName ? '' : prev.id,
-        numerical: (prev.numerical || []).filter((c) => c !== colName),
-        categorical: (prev.categorical || []).filter((c) => c !== colName),
-        datetime: (prev.datetime || []).filter((c) => c !== colName),
-        ignored: (prev.ignored || []).filter((c) => c !== colName),
-      };
-
-      const slotConfig = TARGET_SLOTS.find((s) => s.key === targetSlotKey);
-      if (slotConfig?.isSingle) {
-        next[targetSlotKey] = colName;
-      } else {
-        next[targetSlotKey] = [...(next[targetSlotKey] || []), colName];
-      }
-
-      return next;
-    });
-
-    setNotification({
-      type: 'success',
-      message: `Assigned "${colName}" to ${TARGET_SLOTS.find((s) => s.key === targetSlotKey)?.label?.split('/')[0] || targetSlotKey}`,
-    });
-    setTimeout(() => setNotification(null), 2500);
-  };
-
-  // Drop handler (kept for future drop-zone re-addition)
-  const handleDrop = (e, slotKey) => {
-    e.preventDefault();
-    const colName = e.dataTransfer.getData('text/plain') || draggedColumn?.name;
-    if (!colName) return;
-    assignColumnToSlot(colName, slotKey);
-  };
-
-  // Remove column from target slot
-  const handleUnassignColumn = (colName, slotKey) => {
-    setMapping((prev) => {
-      const slotConfig = TARGET_SLOTS.find((s) => s.key === slotKey);
-      if (slotConfig?.isSingle) {
-        return { ...prev, [slotKey]: '' };
-      }
-      return {
-        ...prev,
-        [slotKey]: (prev[slotKey] || []).filter((c) => c !== colName),
-      };
-    });
-  };
-
-  // Auto-Suggest Mapping
-  const handleAutoSuggest = () => {
-    if (!currentDataset?.columns) return;
-    const auto = datasetService.autoSuggestMapping
-      ? datasetService.autoSuggestMapping(currentDataset.columns)
-      : {
-          target: '',
-          id: '',
-          numerical: [],
-          categorical: [],
-          datetime: [],
-          ignored: [],
-        };
-    setMapping(auto);
-    setNotification({
-      type: 'success',
-      message: 'Heuristic auto-mapping applied to all columns.',
-    });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  // Reset Mapping
-  const handleResetMapping = () => {
-    setMapping({
-      target: '',
-      id: '',
-      numerical: [],
-      categorical: [],
-      datetime: [],
-      ignored: [],
-    });
-    setColumnLabels({});
-    setNotification({
-      type: 'info',
-      message: 'All column assignments cleared.',
-    });
-    setTimeout(() => setNotification(null), 2500);
-  };
-
-  // Save Mapping
-  const handleSaveMapping = async () => {
-    if (!currentDataset) return;
-    try {
-      await datasetService.saveFieldMapping(currentDataset.id, mapping);
-      setNotification({
-        type: 'success',
-        message: `Field mapping saved successfully for "${currentDataset.name}".`,
-      });
-      setTimeout(() => setNotification(null), 4000);
-    } catch (err) {
-      alert('Failed to save mapping: ' + err.message);
-    }
-  };
-
-  // Determine current slot of a column
-  const getColumnAssignment = useCallback((colName) => {
-    if (mapping.target === colName) return 'target';
-    if (mapping.id === colName) return 'id';
-    if (mapping.numerical?.includes(colName)) return 'numerical';
-    if (mapping.categorical?.includes(colName)) return 'categorical';
-    if (mapping.datetime?.includes(colName)) return 'datetime';
-    if (mapping.ignored?.includes(colName)) return 'ignored';
-    return null;
-  }, [mapping]);
-
-  // Filter source columns
-  const filteredColumns = useMemo(() => {
-    if (!currentDataset?.columns) return [];
-    return currentDataset.columns.filter((c) => {
-      const q = columnSearch.toLowerCase();
-      const matchesSearch = !columnSearch.trim() || c.name.toLowerCase().includes(q);
-
-      const assignedSlot = getColumnAssignment(c.name);
-      if (typeFilter === 'UNMAPPED') {
-        return matchesSearch && assignedSlot === null;
-      }
-      if (typeFilter === 'NUMERIC') {
-        return matchesSearch && (c.type === 'Integer' || c.type === 'Float');
-      }
-      if (typeFilter === 'CATEGORICAL') {
-        return matchesSearch && (c.type === 'Categorical' || c.type === 'String');
-      }
-      return matchesSearch;
-    });
-  }, [currentDataset, columnSearch, typeFilter, getColumnAssignment]);
-
-  // Statistics
-  const totalColsCount = currentDataset?.columns?.length || 0;
-  const mappedCount = useMemo(() => {
-    let count = 0;
-    if (mapping.target) count += 1;
-    if (mapping.id) count += 1;
-    count += (mapping.numerical || []).length;
-    count += (mapping.categorical || []).length;
-    count += (mapping.datetime || []).length;
-    count += (mapping.ignored || []).length;
-    return count;
-  }, [mapping]);
-  const unmappedCount = Math.max(0, totalColsCount - mappedCount);
-
-  // Fetch paginated preview when drawer opens
-  const fetchDrawerPreview = useCallback(async (page, limit) => {
-    if (!currentDataset) return;
-    setPreviewLoading(true);
-    try {
-      const p = await datasetService.getDatasetPreview(currentDataset.id, { page, limit });
-      setPreviewData(p);
-    } catch (err) {
-      console.error('Drawer preview error:', err);
-    } finally {
-      setPreviewLoading(false);
-    }
+  // Source columns
+  const sourceColumns = useMemo(() => {
+    return currentDataset?.columns || [];
   }, [currentDataset]);
 
-  useEffect(() => {
-    if (showPreviewDrawer && currentDataset) {
-      fetchDrawerPreview(previewPage, previewPageSize);
+  // Filtered source columns by search
+  const filteredSourceColumns = useMemo(() => {
+    if (!sourceSearch.trim()) return sourceColumns;
+    const q = sourceSearch.toLowerCase().trim();
+    return sourceColumns.filter((col) => col.name.toLowerCase().includes(q));
+  }, [sourceColumns, sourceSearch]);
+
+  // Source column mapping lookup: { [sourceColName]: connectionObj }
+  const sourceToConnectionMap = useMemo(() => {
+    const map = {};
+    connections.forEach((conn) => {
+      map[conn.sourceField] = conn;
+    });
+    return map;
+  }, [connections]);
+
+  // Destination field mapping lookup: { [destFieldName]: connectionObj }
+  const destToConnectionMap = useMemo(() => {
+    const map = {};
+    connections.forEach((conn) => {
+      map[conn.destField] = conn;
+    });
+    return map;
+  }, [connections]);
+
+  // Stats
+  const totalSourceCount = sourceColumns.length;
+  const mappedSourceCount = useMemo(() => {
+    return Object.keys(sourceToConnectionMap).length;
+  }, [sourceToConnectionMap]);
+  const unmappedSourceCount = Math.max(0, totalSourceCount - mappedSourceCount);
+
+  const totalDestCount = destinationFields.length;
+  const connectedDestCount = useMemo(() => {
+    return Object.keys(destToConnectionMap).length;
+  }, [destToConnectionMap]);
+
+  const transformationsCount = useMemo(() => {
+    return connections.filter((c) => c.transformation && c.transformation !== 'none').length;
+  }, [connections]);
+
+  // Connect source and destination
+  const createConnection = useCallback(
+    (sourceName, destName) => {
+      if (!sourceName || !destName) return;
+
+      setConnections((prev) => {
+        // Remove existing connections for this source or this destination
+        const filtered = prev.filter(
+          (c) => c.sourceField !== sourceName && c.destField !== destName
+        );
+
+        return [
+          ...filtered,
+          {
+            id: `conn-${sourceName}-${destName}-${Date.now()}`,
+            sourceField: sourceName,
+            destField: destName,
+            transformation: 'none',
+          },
+        ];
+      });
+
+      setSelectedSourceCol(null);
+      setSelectedDestField(null);
+      showNotification('success', `Connected "${sourceName}" → "${destName}".`);
+    },
+    []
+  );
+
+  // Click on a source column
+  const handleSourceColumnClick = (colName) => {
+    if (selectedDestField) {
+      // Connect with already selected destination
+      createConnection(colName, selectedDestField);
+    } else {
+      // Toggle selection
+      setSelectedSourceCol((prev) => (prev === colName ? null : colName));
     }
-  }, [showPreviewDrawer, currentDataset, previewPage, previewPageSize, fetchDrawerPreview]);
+  };
+
+  // Click on a destination field
+  const handleDestFieldClick = (destName) => {
+    if (selectedSourceCol) {
+      // Connect with already selected source
+      createConnection(selectedSourceCol, destName);
+    } else {
+      // Toggle selection
+      setSelectedDestField((prev) => (prev === destName ? null : destName));
+    }
+  };
+
+  // Add new destination field
+  const handleAddDestinationField = (e) => {
+    if (e) e.preventDefault();
+    const trimmed = newDestFieldName.trim();
+    if (!trimmed) return;
+
+    if (destinationFields.some((f) => f.name.toLowerCase() === trimmed.toLowerCase())) {
+      showNotification('warning', `Destination field "${trimmed}" already exists.`);
+      return;
+    }
+
+    const newField = {
+      id: `dest-${Date.now()}`,
+      name: trimmed,
+      type: newDestFieldType,
+    };
+
+    setDestinationFields((prev) => [...prev, newField]);
+    setNewDestFieldName('');
+
+    // If a source field was selected, connect automatically
+    if (selectedSourceCol) {
+      createConnection(selectedSourceCol, trimmed);
+    } else {
+      showNotification('success', `Destination field "${trimmed}" added.`);
+    }
+  };
+
+  // Remove a destination field
+  const handleRemoveDestinationField = (destName) => {
+    setDestinationFields((prev) => prev.filter((f) => f.name !== destName));
+    setConnections((prev) => prev.filter((c) => c.destField !== destName));
+    if (selectedDestField === destName) setSelectedDestField(null);
+    showNotification('info', `Removed destination field "${destName}".`);
+  };
+
+  // Remove a connection
+  const handleRemoveConnection = (connId) => {
+    setConnections((prev) => prev.filter((c) => c.id !== connId));
+    showNotification('info', 'Connection removed.');
+  };
+
+  // Update transformation for a connection
+  const handleUpdateTransformation = (connId, transformation) => {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === connId ? { ...c, transformation } : c))
+    );
+  };
+
+  // Auto-map all unmapped fields with same name or create destinations
+  const handleAutoMapAll = () => {
+    const newDests = [...destinationFields];
+    const newConns = [...connections];
+
+    sourceColumns.forEach((col) => {
+      // If not already mapped
+      if (!newConns.some((c) => c.sourceField === col.name)) {
+        let matchingDest = newDests.find((d) => d.name.toLowerCase() === col.name.toLowerCase());
+        if (!matchingDest) {
+          matchingDest = {
+            id: `dest-${col.name}`,
+            name: col.name,
+            type: col.type || 'String',
+          };
+          newDests.push(matchingDest);
+        }
+
+        newConns.push({
+          id: `conn-${col.name}-${matchingDest.name}`,
+          sourceField: col.name,
+          destField: matchingDest.name,
+          transformation: 'none',
+        });
+      }
+    });
+
+    setDestinationFields(newDests);
+    setConnections(newConns);
+    showNotification('success', 'Auto-mapped all source fields to destinations.');
+  };
+
+  // Discard changes & restore from dataset initial state
+  const handleDiscardChanges = () => {
+    if (currentDataset) {
+      loadDatasetState(currentDataset);
+      setSelectedSourceCol(null);
+      setSelectedDestField(null);
+      showNotification('info', 'Discarded uncommitted changes.');
+    }
+  };
+
+  // Clear all connections and destinations
+  const handleClearAll = () => {
+    setConnections([]);
+    setDestinationFields([]);
+    setSelectedSourceCol(null);
+    setSelectedDestField(null);
+    showNotification('warning', 'Cleared all connections and destination fields.');
+  };
+
+  // Save pipeline configuration
+  const handleSavePipeline = async () => {
+    if (!currentDataset) return;
+    setIsSaving(true);
+
+    try {
+      // Build standard mapping object for backward compatibility
+      const targetCol = connections.find((c) =>
+        /target|label|churn|price|alert/i.test(c.destField)
+      )?.sourceField || '';
+
+      const idCol = connections.find((c) =>
+        /id$|^id|_id$/i.test(c.destField)
+      )?.sourceField || '';
+
+      const numericalCols = connections
+        .filter((c) => {
+          const dest = destinationFields.find((d) => d.name === c.destField);
+          return (
+            dest?.type === 'Integer' ||
+            dest?.type === 'Float' ||
+            dest?.type === 'number'
+          );
+        })
+        .map((c) => c.sourceField);
+
+      const categoricalCols = connections
+        .filter((c) => !numericalCols.includes(c.sourceField) && c.sourceField !== targetCol && c.sourceField !== idCol)
+        .map((c) => c.sourceField);
+
+      const payload = {
+        target: targetCol,
+        id: idCol,
+        numerical: numericalCols,
+        categorical: categoricalCols,
+        datetime: [],
+        ignored: sourceColumns
+          .filter((c) => !connections.some((conn) => conn.sourceField === c.name))
+          .map((c) => c.name),
+        connections,
+        destinations: destinationFields,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await datasetService.saveFieldMapping(currentDataset.id, payload);
+      showNotification('success', `Pipeline saved successfully for "${currentDataset.name}".`);
+    } catch (err) {
+      console.error('Error saving pipeline:', err);
+      showNotification('error', `Save failed: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Compute live preview rows
+  const generatePreview = useCallback(() => {
+    if (!currentDataset) return;
+    setPreviewLoading(true);
+
+    const sampleRows = currentDataset.sampleRows || currentDataset.previewData || [];
+
+    setTimeout(() => {
+      const transformed = sampleRows.map((row) => {
+        const outputRow = {};
+
+        connections.forEach((conn) => {
+          let val = row[conn.sourceField];
+
+          // Apply transformation
+          if (conn.transformation === 'trim' && typeof val === 'string') {
+            val = val.trim();
+          } else if (conn.transformation === 'uppercase' && typeof val === 'string') {
+            val = val.toUpperCase();
+          } else if (conn.transformation === 'lowercase' && typeof val === 'string') {
+            val = val.toLowerCase();
+          } else if (conn.transformation === 'to_number') {
+            val = Number(val) || 0;
+          } else if (conn.transformation === 'to_boolean') {
+            val = Boolean(val);
+          }
+
+          outputRow[conn.destField] = val !== undefined ? val : null;
+        });
+
+        return outputRow;
+      });
+
+      setPreviewRows(transformed);
+      setPreviewLoading(false);
+    }, 150);
+  }, [currentDataset, connections]);
+
+  // Load preview when tab is preview
+  useEffect(() => {
+    if (activeTab === 'preview') {
+      generatePreview();
+    }
+  }, [activeTab, generatePreview]);
 
   if (isLoading) {
     return (
-      <div className="p-12 text-center text-slate-400 space-y-4">
-        <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-sm font-semibold">Loading Field Mapping Studio...</p>
+      <div className="p-16 text-center text-slate-400 space-y-4 bg-[#0c122b]/90 border border-cyan-500/20 min-h-[500px] flex flex-col items-center justify-center rounded-3xl shadow-2xl">
+        <div className="w-10 h-10 border-3 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-300">Loading Pipeline Workspace...</p>
       </div>
     );
   }
 
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
   return (
-    <div className="space-y-6 pb-24 text-slate-100">
-      {/* Top Header & Breadcrumbs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-400 mb-1">
-            <Link to="/dashboard/datasets" className="hover:text-cyan-400 flex items-center space-x-1">
-              <ArrowLeft className="w-3 h-3" />
-              <span>Datasets Catalog</span>
-            </Link>
-            <span>/</span>
-            <span className="text-cyan-400 font-bold">Visual Field Mapping</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Schema & Feature Mapping
-            </h1>
-            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/40">
-              Drag-and-Drop Ready
-            </span>
-          </div>
-          <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Assign ingested source columns to machine learning target roles (Target Label, Identifiers, Numerical, and Categorical predictors).
-          </p>
-        </div>
-
-        {/* Dataset Switcher & Global Actions */}
-        <div className="flex items-center space-x-2.5 self-start md:self-auto flex-wrap gap-y-2">
-          {/* Dataset Dropdown */}
-          <div className="relative">
-            <select
-              value={selectedDatasetId}
-              onChange={(e) => handleSelectDataset(e.target.value)}
-              className="bg-[#0a0f24] border border-cyan-500/30 text-white rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-cyan-400 cursor-pointer shadow-md"
-            >
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.columns?.length || 0} cols)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Auto-Suggest Button */}
-          <button
-            type="button"
-            onClick={handleAutoSuggest}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#0a0f24] hover:bg-white/5 border border-cyan-500/30 text-cyan-300 hover:text-white font-bold text-xs transition-colors cursor-pointer"
-            title="Auto-detect target, IDs, and predictor roles"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Auto-Suggest</span>
-          </button>
-
-          {/* Reset Button */}
-          <button
-            type="button"
-            onClick={handleResetMapping}
-            className="p-2 rounded-xl bg-[#0a0f24] hover:bg-white/5 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            title="Clear all assignments"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Save Mapping Button */}
-          <button
-            type="button"
-            onClick={handleSaveMapping}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all cursor-pointer"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Save Mapping</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Notification Toast */}
+    <div className="space-y-6 pb-20 animate-fade-in text-slate-100">
+      {/* Toast Notification */}
       {notification && (
         <div
-          className={`p-3.5 rounded-2xl flex items-center justify-between text-xs font-semibold animate-fade-in border ${
+          className={`fixed bottom-6 right-6 z-50 flex items-center space-x-3 px-4 py-3 rounded-2xl shadow-2xl text-sm font-semibold transition-all backdrop-blur-xl border ${
             notification.type === 'success'
-              ? 'bg-emerald-950/80 text-emerald-200 border-emerald-500/40'
-              : 'bg-cyan-950/80 text-cyan-200 border-cyan-500/40'
+              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50 shadow-emerald-900/30'
+              : notification.type === 'warning'
+              ? 'bg-amber-950/90 text-amber-300 border-amber-500/50 shadow-amber-900/30'
+              : notification.type === 'error'
+              ? 'bg-rose-950/90 text-rose-300 border-rose-500/50 shadow-rose-900/30'
+              : 'bg-cyan-950/90 text-cyan-300 border-cyan-500/50 shadow-cyan-900/30'
           }`}
         >
-          <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{notification.message}</span>
-          </div>
-          <button onClick={() => setNotification(null)} className="p-1 text-slate-400 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+          {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+          {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-400" />}
+          <span>{notification.message}</span>
         </div>
       )}
 
-      {/* Overview Status & Validation Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        {/* Target Status */}
-        <div
-          className={`p-4 rounded-2xl border transition-all ${
-            mapping.target
-              ? 'bg-rose-950/20 border-rose-500/40'
-              : 'bg-amber-950/30 border-amber-500/40'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs font-semibold mb-1">
-            <span className={mapping.target ? 'text-rose-300' : 'text-amber-300'}>
-              Target Variable
-            </span>
-            <Crosshair className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-sm font-extrabold text-white truncate">
-            {mapping.target ? (
-              <span className="text-rose-400 font-mono">{mapping.target}</span>
-            ) : (
-              <span className="text-amber-400 text-xs font-semibold flex items-center space-x-1">
-                <AlertTriangle className="w-3 h-3 inline mr-1" />
-                Unassigned (Required)
-              </span>
-            )}
-          </div>
-        </div>
+      {/* TOP HEADER & METADATA BANNER (Dashboard Cosmic Theme) */}
+      <div className="relative overflow-hidden rounded-3xl bg-[#0c122b]/95 border border-cyan-500/25 p-6 sm:p-7 shadow-2xl backdrop-blur-2xl">
+        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute -left-20 -top-20 w-80 h-80 bg-purple-500/10 rounded-full blur-[80px] pointer-events-none" />
 
-        {/* Mapped vs Unmapped */}
-        <div className="p-4 rounded-2xl bg-[#0a0f24] border border-cyan-500/20">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1 font-semibold">
-            <span>Mapping Coverage</span>
-            <Check className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-base font-extrabold text-white">
-            {mappedCount} <span className="text-xs text-slate-400 font-normal">/ {totalColsCount} mapped ({unmappedCount} left)</span>
-          </div>
-        </div>
-
-        {/* Feature Breakdown */}
-        <div className="p-4 rounded-2xl bg-[#0a0f24] border border-cyan-500/20">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-1 font-semibold">
-            <span>Predictor Features</span>
-            <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-xs font-bold text-white space-y-0.5">
-            <div>
-              <span className="text-cyan-300 font-mono">{(mapping.numerical || []).length}</span> Numerical â€¢{' '}
-              <span className="text-purple-300 font-mono">{(mapping.categorical || []).length}</span> Categorical
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          {/* Left: Dataset Identity & Metadata */}
+          <div className="flex items-start sm:items-center space-x-4">
+            <div className="w-13 h-13 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
+              <FileSpreadsheet className="w-7 h-7" />
             </div>
-            <div className="text-slate-400 text-[11px]">
-              {(mapping.datetime || []).length} Temporal â€¢ {(mapping.ignored || []).length} Excluded
-            </div>
-          </div>
-        </div>
 
-        {/* Quick Drawer Preview Toggle */}
-        <div className="p-4 rounded-2xl bg-[#0a0f24] border border-cyan-500/20 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>Source Inspection</span>
-            <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowPreviewDrawer((prev) => !prev)}
-            className="mt-2 inline-flex items-center justify-between text-xs font-bold text-cyan-400 hover:text-cyan-300 bg-[#070b1c] hover:bg-cyan-950 px-3 py-1.5 rounded-xl border border-slate-800 transition-colors cursor-pointer"
-          >
-            <span>{showPreviewDrawer ? 'Hide Records Table' : 'Inspect Tabular Records'}</span>
-            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showPreviewDrawer ? 'rotate-90' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Expandable Preview Table Drawer */}
-      {showPreviewDrawer && (
-        <div className="animate-fade-in border-b border-slate-800 pb-4">
-          <DatasetPreviewTable
-            columns={currentDataset?.columns || []}
-            rows={previewData?.rows || currentDataset?.sampleRows || []}
-            title={currentDataset?.name}
-            format={currentDataset?.format}
-            totalRows={currentDataset?.rowCount}
-            fileSizeBytes={currentDataset?.sizeBytes}
-            isLoading={previewLoading}
-            pagination={previewData?.pagination}
-            onPageChange={(p) => setPreviewPage(p)}
-            onPageSizeChange={(s) => {
-              setPreviewPageSize(s);
-              setPreviewPage(1);
-            }}
-            onClose={() => setShowPreviewDrawer(false)}
-          />
-        </div>
-      )}
-
-      {/* Drag & Drop Visual Mapping Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column (5 cols): Source Dataset Columns */}
-        <div className="lg:col-span-7 bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-5 shadow-xl space-y-4">`
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div>
-              <h2 className="text-base font-bold text-white flex items-center space-x-2">
-                <span>Source Columns</span>
-                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                  {currentDataset?.columns?.length || 0}
+              <div className="flex items-center space-x-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  {currentDataset?.name || 'streamweaver_demo_50_records.csv'}
+                </h1>
+                <span className="text-slate-500">•</span>
+                <span className="text-xs text-slate-300 font-medium">
+                  {formatFileSize(currentDataset?.fileSize || currentDataset?.sizeBytes || 3116)}
                 </span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Drag cards to assign into target slots, or use the slot menu.
-              </p>
-            </div>
-          </div>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 uppercase tracking-wide">
+                  {currentDataset?.format || currentDataset?.fileType || 'CSV'}
+                </span>
 
-          {/* Search & Filter Chips */}
-          <div className="space-y-2">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={columnSearch}
-                onChange={(e) => setColumnSearch(e.target.value)}
-                placeholder="Search source columns..."
-                className="w-full text-xs bg-[#070b1c] text-white placeholder-slate-500 pl-9 pr-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 transition-all font-medium"
-              />
-            </div>
-
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
-              {['ALL', 'UNMAPPED', 'NUMERIC', 'CATEGORICAL'].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setTypeFilter(f)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-                    typeFilter === f
-                      ? 'bg-cyan-600 text-white shadow-xs'
-                      : 'bg-[#070b1c] text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Source Column Cards (Draggable) */}
-          <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-            {filteredColumns.map((col) => {
-              const currentSlot = getColumnAssignment(col.name);
-              const slotInfo = TARGET_SLOTS.find((s) => s.key === currentSlot);
-              const isDraggingThis = draggedColumn?.name === col.name;
-
-              return (
-                <div
-                  key={col.name}
-                  draggable="true"
-                  onDragStart={(e) => handleDragStart(e, col)}
-                  onDragEnd={handleDragEnd}
-                  className={`p-3 rounded-2xl border transition-all duration-150 select-none cursor-grab active:cursor-grabbing group ${
-                    isDraggingThis
-                      ? 'opacity-40 scale-95 border-cyan-400 bg-cyan-950/40 ring-2 ring-cyan-500'
-                      : currentSlot
-                      ? 'bg-[#070b1c] border-slate-800 hover:border-slate-700'
-                      : 'bg-[#0c1230] border-cyan-500/25 hover:border-cyan-400 hover:shadow-[0_0_12px_rgba(6,182,212,0.2)]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center space-x-2.5 overflow-hidden">
-                      {/* Drag Handle Icon */}
-                      <GripVertical className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 shrink-0 cursor-grab" />
-
-                      <div className="overflow-hidden">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-xs text-white truncate max-w-[170px]" title={col.name}>
-                            {col.name}
-                          </span>
-                          <span
-                            className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
-                              col.type === 'Integer' || col.type === 'Float'
-                                ? 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
-                                : col.type === 'Boolean'
-                                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
-                                : 'bg-purple-950 text-purple-300 border-purple-500/40'
-                            }`}
-                          >
-                            {col.type || 'String'}
-                          </span>
-                        </div>
-
-                        {/* Null count / status */}
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {col.missingCount > 0 ? (
-                            <span className="text-amber-400 font-semibold">{col.missingCount} missing values</span>
-                          ) : (
-                            <span>Complete (0 nulls)</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quick Assignment Dropdown Fallback */}
-                    <div className="flex items-center space-x-1.5 shrink-0">
-                      {currentSlot ? (
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${slotInfo?.badgeStyle}`}
-                          title={`Assigned to ${slotInfo?.label}`}
-                        >
-                          {slotInfo?.key.toUpperCase()}
-                        </span>
-                      ) : (
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) assignColumnToSlot(col.name, e.target.value);
-                          }}
-                          className="bg-[#050814] text-slate-300 border border-slate-800 text-[10px] font-semibold rounded-lg px-2 py-1 focus:outline-none focus:border-cyan-400 cursor-pointer"
-                        >
-                          <option value="" disabled>
-                            Assign to...
-                          </option>
-                          {TARGET_SLOTS.map((s) => (
-                            <option key={s.key} value={s.key}>
-                              {s.label.split('/')[0]}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                {/* Dataset Switcher Dropdown */}
+                {datasets.length > 1 && (
+                  <div className="relative inline-block ml-2">
+                    <select
+                      value={selectedDatasetId}
+                      onChange={(e) => handleSelectDataset(e.target.value)}
+                      className="text-xs bg-[#070b1c] border border-cyan-500/40 text-slate-200 rounded-xl px-3 py-1 font-semibold focus:outline-none focus:border-cyan-400 cursor-pointer shadow-md"
+                    >
+                      {datasets.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          Switch: {d.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-              );
-            })}
-
-            {filteredColumns.length === 0 && (
-              <div className="p-8 text-center text-slate-500 text-xs">
-                No source columns match filter "{columnSearch}".
+                )}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Middle Column (Mapping Overview â€” editable destination labels) */}
-        <div className="lg:col-span-7 bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-5 shadow-xl space-y-4">`
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-            <h2 className="text-base font-bold text-white flex items-center space-x-2">
-              <span>Mapping</span>
-              <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                {mappedCount} / {totalColsCount}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-400">Source â†’ Destination</p>
-          </div>
-
-          {/* Column labels â€” header row */}
-          {mappedCount > 0 && (
-            <div className="flex items-center px-2 mb-1 gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              <span className="flex-1">Source</span>
-              <span className="w-4" />
-              <span className="flex-1">Destination Name</span>
-              <span className="w-4" />
-              <span className="w-16 text-center">Role</span>
-              <span className="w-5" />
-            </div>
-          )}
-
-          {/* Mapping List */}
-          <div className="max-h-[520px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800 space-y-2">
-            {Object.entries(mapping).flatMap(([slotKey, value]) => {
-              const slotConfig = TARGET_SLOTS.find((s) => s.key === slotKey);
-              if (!slotConfig) return [];
-              if (slotConfig.isSingle) {
-                if (!value) return [];
-                return [{ source: value, slotKey, slotConfig }];
-              }
-              return (value || []).map((src) => ({ source: src, slotKey, slotConfig }));
-            }).map((item) => (
-              <div
-                key={item.source + '-' + item.slotKey}
-                className="flex items-center gap-2 p-2.5 rounded-2xl border border-slate-800 bg-[#070b1c] group hover:border-slate-700 transition-colors"
-              >
-                {/* Source column name */}
-                <div className="flex-1 min-w-0">
-                  <span
-                    className="block font-mono text-xs font-bold text-white truncate"
-                    title={item.source}
-                  >
-                    {item.source}
+              {/* Stats Row */}
+              <div className="flex items-center space-x-4 sm:space-x-6 text-xs text-slate-300 mt-2.5 flex-wrap gap-y-2 font-medium">
+                <div className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    <strong className="text-white">{mappedSourceCount}</strong> of{' '}
+                    <strong className="text-white">{totalSourceCount}</strong> fields mapped
                   </span>
                 </div>
 
-                {/* Arrow */}
-                <ArrowRight className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
-
-                {/* Editable destination label */}
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="text"
-                    value={columnLabels[item.source] ?? item.source}
-                    onChange={(e) =>
-                      setColumnLabels((prev) => ({
-                        ...prev,
-                        [item.source]: e.target.value,
-                      }))
-                    }
-                    placeholder={item.source}
-                    className="w-full bg-[#0c1230] text-cyan-200 placeholder-slate-500 text-xs font-semibold px-2 py-1 rounded-lg border border-slate-700 focus:outline-none focus:border-cyan-400 transition-colors"
-                  />
+                <div className="flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    <strong className="text-white">{unmappedSourceCount}</strong> unmapped
+                  </span>
                 </div>
 
-                {/* Arrow to role */}
-                <ArrowRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <div className="flex items-center space-x-1.5">
+                  <Layers className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>
+                    <strong className="text-white">{totalDestCount}</strong> destinations
+                  </span>
+                </div>
 
-                {/* Slot role badge */}
-                <span
-                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border shrink-0 w-16 text-center ${item.slotConfig.badgeStyle}`}
-                  title={item.slotConfig.label}
-                >
-                  {item.slotKey.toUpperCase()}
-                </span>
+                <div className="flex items-center space-x-1.5">
+                  <Wand2 className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>
+                    <strong className="text-white">{transformationsCount}</strong> transformations configured
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                {/* Unassign button */}
+          {/* Right: Primary Pipeline Actions */}
+          <div className="flex items-center space-x-3 shrink-0 self-start lg:self-auto">
+            <button
+              onClick={handleSavePipeline}
+              disabled={isSaving}
+              className="px-5 py-2.5 rounded-full text-xs sm:text-sm font-bold bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSaving ? 'Saving...' : 'Save Pipeline'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('preview')}
+              className="px-4 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[#0d1636] hover:bg-[#121e4a] text-slate-200 border border-cyan-500/30 shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
+            >
+              <span>Continue to Processing</span>
+              <ArrowRight className="w-4 h-4 text-cyan-400" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* TAB NAVIGATION BAR (Dashboard Pill Style) */}
+      <div className="flex items-center justify-between border-b border-cyan-500/15 pb-2 px-1 flex-wrap gap-y-2">
+        <div className="flex items-center space-x-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('workspace')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'workspace'
+                ? 'bg-cyan-950/70 text-cyan-300 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Field Mapping Workspace</span>
+            <span className="w-5 h-5 rounded-full bg-[#070b1c] text-cyan-400 text-[10px] font-extrabold flex items-center justify-center border border-cyan-500/30">
+              {connections.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('transformations')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'transformations'
+                ? 'bg-purple-950/70 text-purple-300 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.2)]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>Transformation Builder</span>
+            {transformationsCount > 0 && (
+              <span className="w-5 h-5 rounded-full bg-purple-900 text-purple-300 text-[10px] font-extrabold flex items-center justify-center">
+                {transformationsCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'preview'
+                ? 'bg-blue-950/70 text-blue-300 border border-blue-500/40 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5 text-blue-400" />
+            <span>Live Output Preview</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('engine')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'engine'
+                ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Play className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Stage 5: Processing Engine</span>
+          </button>
+        </div>
+
+        <span className="text-xs font-semibold text-slate-500">Nexora Pipeline Engine</span>
+      </div>
+
+      {/* TAB CONTENT: 1. FIELD MAPPING WORKSPACE (3-COLUMN LAYOUT) */}
+      {activeTab === 'workspace' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* ========================================================================= */}
+          {/* COLUMN 1: SOURCE COLUMNS (lg:col-span-3) */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-3 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                  <Database className="w-4 h-4" />
+                </div>
+                <h2 className="text-xs font-black uppercase tracking-wider text-white">
+                  SOURCE COLUMNS
+                </h2>
+              </div>
+
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                {mappedSourceCount} of {totalSourceCount} mapped
+              </span>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={sourceSearch}
+                onChange={(e) => setSourceSearch(e.target.value)}
+                placeholder="Search source fields..."
+                className="w-full bg-[#070b1c] hover:bg-[#0a0f26] focus:bg-[#0d1538] text-xs text-white placeholder-slate-500 pl-8 pr-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/30 font-medium transition-all"
+              />
+            </div>
+
+            {/* Source Columns List */}
+            <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+              {filteredSourceColumns.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-500 font-medium">
+                  No matching columns found
+                </div>
+              ) : (
+                filteredSourceColumns.map((col) => {
+                  const isMapped = Boolean(sourceToConnectionMap[col.name]);
+                  const isSelected = selectedSourceCol === col.name;
+
+                  return (
+                    <div
+                      key={col.name}
+                      onClick={() => handleSourceColumnClick(col.name)}
+                      className={`p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer select-none group ${
+                        isSelected
+                          ? 'border-cyan-400 bg-cyan-950/60 shadow-[0_0_15px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400 text-white'
+                          : isMapped
+                          ? 'border-slate-800/80 hover:border-cyan-500/40 bg-[#080d22] hover:bg-[#0d1636] text-slate-200'
+                          : 'border-slate-800/80 hover:border-amber-500/40 bg-[#080d22] hover:bg-[#121730] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <GripVertical className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
+                        <span className="font-mono text-xs font-semibold text-slate-200 truncate group-hover:text-white">
+                          {col.name}
+                        </span>
+                      </div>
+
+                      {isMapped ? (
+                        <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold shrink-0">
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span>Mapped</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-500/40 text-[10px] font-bold shrink-0">
+                          <AlertTriangle className="w-3 h-3 text-amber-400" />
+                          <span>Not mapped</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Quick Auto-map Helper */}
+            {unmappedSourceCount > 0 && (
+              <button
+                onClick={handleAutoMapAll}
+                className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/30 transition-all flex items-center justify-center space-x-1.5 cursor-pointer mt-2 shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Auto-Map All Unmapped Fields</span>
+              </button>
+            )}
+          </div>
+
+          {/* ========================================================================= */}
+          {/* COLUMN 2: FIELD MAPPING CANVAS (lg:col-span-6) */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-6 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4 min-h-[500px]">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-black uppercase tracking-wider text-white">
+                    FIELD MAPPING
+                  </h2>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Connect source columns to target destination fields
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                {connections.length} active connections
+              </span>
+            </div>
+
+            {/* Selection Hint Pill */}
+            {(selectedSourceCol || selectedDestField) && (
+              <div className="px-4 py-2.5 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 text-xs text-cyan-200 flex items-center justify-between shadow-md">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  <span>
+                    Selected:{' '}
+                    <strong className="text-white">{selectedSourceCol || `(Pick a source column)`}</strong> →{' '}
+                    <strong className="text-white">{selectedDestField || `(Pick a destination field)`}</strong>
+                  </span>
+                </div>
                 <button
-                  onClick={() => handleUnassignColumn(item.source, item.slotKey)}
-                  className="shrink-0 p-1 text-slate-600 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Remove mapping"
+                  onClick={() => {
+                    setSelectedSourceCol(null);
+                    setSelectedDestField(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white cursor-pointer font-bold px-2 py-0.5 rounded-lg bg-slate-900"
                 >
-                  <X className="w-3 h-3" />
+                  Cancel
                 </button>
               </div>
-            ))}
+            )}
 
-            {mappedCount === 0 && (
-              <div className="py-16 text-center space-y-2">
-                <ArrowRight className="w-6 h-6 text-slate-700 mx-auto" />
-                <p className="text-slate-500 text-xs">
-                  Drag a source column into a target slot to create a mapping.
-                </p>
+            {/* Empty State vs Connected Cards */}
+            {connections.length === 0 ? (
+              <div className="my-auto py-16 px-6 border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center space-y-3 bg-[#080d22]/50">
+                <div className="w-13 h-13 rounded-2xl bg-[#0d1636] text-cyan-400 border border-cyan-500/30 flex items-center justify-center shadow-lg">
+                  <Link2 className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-white">No Connections Created</h3>
+                  <p className="text-xs text-slate-400 max-w-sm font-medium leading-relaxed">
+                    Click a Source Column on the left, then click a Destination Field on the right to
+                    connect them.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
+                {connections.map((conn) => {
+                  return (
+                    <div
+                      key={conn.id}
+                      className="p-3.5 rounded-2xl border border-slate-800/90 bg-[#080d22] hover:border-cyan-500/40 hover:bg-[#0c1433] shadow-md flex items-center justify-between gap-3 transition-all group"
+                    >
+                      {/* Left: Source Column */}
+                      <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <span className="px-3 py-1.5 rounded-xl bg-slate-900 font-mono text-xs font-bold text-cyan-300 truncate border border-cyan-500/30">
+                          {conn.sourceField}
+                        </span>
+                      </div>
+
+                      {/* Middle: Connection Arrow & Quick Transform Selector */}
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
+                        <select
+                          value={conn.transformation || 'none'}
+                          onChange={(e) => handleUpdateTransformation(conn.id, e.target.value)}
+                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border focus:outline-none cursor-pointer transition-colors ${
+                            conn.transformation && conn.transformation !== 'none'
+                              ? 'bg-purple-950/80 text-purple-300 border-purple-500/40'
+                              : 'bg-[#070b1c] text-slate-400 border-slate-800 hover:text-slate-200'
+                          }`}
+                          title="Click to apply inline transformation"
+                        >
+                          {TRANSFORMATION_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id} className="bg-[#0c122b] text-slate-200">
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
+                      </div>
+
+                      {/* Right: Destination Field & Delete */}
+                      <div className="flex items-center space-x-2 min-w-0 flex-1 justify-end">
+                        <span className="px-3 py-1.5 rounded-xl bg-indigo-950/80 font-mono text-xs font-bold text-indigo-300 truncate border border-indigo-500/40">
+                          {conn.destField}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveConnection(conn.id)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                          title="Disconnect field"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* ========================================================================= */}
+          {/* COLUMN 3: DESTINATION FIELDS (lg:col-span-3) */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-3 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                  <Target className="w-4 h-4" />
+                </div>
+                <h2 className="text-xs font-black uppercase tracking-wider text-white">
+                  DESTINATION FIELDS
+                </h2>
+              </div>
+
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                {connectedDestCount} of {totalDestCount} connected
+              </span>
+            </div>
+
+            {/* Add Destination Input Form */}
+            <form onSubmit={handleAddDestinationField} className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={newDestFieldName}
+                onChange={(e) => setNewDestFieldName(e.target.value)}
+                placeholder="Add new destination fie..."
+                className="flex-1 bg-[#070b1c] hover:bg-[#0a0f26] focus:bg-[#0d1538] text-xs text-white placeholder-slate-500 px-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/30 font-medium transition-all"
+              />
+              <button
+                type="submit"
+                disabled={!newDestFieldName.trim()}
+                className="w-9 h-9 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-md transition-all cursor-pointer disabled:opacity-40"
+                title="Add Field"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* Destination Fields List */}
+            {destinationFields.length === 0 ? (
+              <div className="py-16 px-4 border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center space-y-3 bg-[#080d22]/50">
+                <div className="w-13 h-13 rounded-2xl bg-[#0d1636] text-cyan-400 border border-cyan-500/30 flex items-center justify-center shadow-lg">
+                  <Target className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-white">No destination fields</h3>
+                  <p className="text-xs text-slate-400 max-w-xs font-medium leading-relaxed">
+                    Add your first destination field to start mapping.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+                {destinationFields.map((field) => {
+                  const conn = destToConnectionMap[field.name];
+                  const isConnected = Boolean(conn);
+                  const isSelected = selectedDestField === field.name;
+
+                  return (
+                    <div
+                      key={field.name}
+                      onClick={() => handleDestFieldClick(field.name)}
+                      className={`p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer select-none group ${
+                        isSelected
+                          ? 'border-indigo-400 bg-indigo-950/60 shadow-[0_0_15px_rgba(99,102,241,0.35)] ring-1 ring-indigo-400 text-white'
+                          : isConnected
+                          ? 'border-slate-800/80 hover:border-cyan-500/40 bg-[#080d22] hover:bg-[#0d1636] text-slate-200'
+                          : 'border-slate-800/80 hover:border-indigo-500/40 bg-[#080d22] hover:bg-[#121730] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                        <GripVertical className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-mono text-xs font-semibold text-slate-200 truncate block group-hover:text-white">
+                            {field.name}
+                          </span>
+                          {isConnected && (
+                            <span className="text-[10px] text-cyan-400/80 font-medium truncate block">
+                              ← {conn.sourceField}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0">
+                        {isConnected ? (
+                          <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Connected</span>
+                          </div>
+                        ) : (
+                          <div className="px-2 py-0.5 rounded-full bg-slate-900 text-slate-500 border border-slate-800 text-[10px] font-semibold">
+                            Empty
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveDestinationField(field.name);
+                          }}
+                          className="p-1 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                          title="Delete destination field"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: 2. TRANSFORMATION BUILDER */}
+      {activeTab === 'transformations' && (
+        <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-6">
+          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-white">Transformation Engine Pipeline</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Apply data cleaning, whitespace stripping, type casting, or case standardizations.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                connections.forEach((c) => handleUpdateTransformation(c.id, 'trim'));
+                showNotification('success', 'Applied "Trim Whitespace" to all active connections.');
+              }}
+              className="text-xs font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-3.5 py-1.5 rounded-xl hover:bg-cyan-900/60 cursor-pointer shadow-sm"
+            >
+              Batch Apply: Trim All
+            </button>
+          </div>
+
+          {connections.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 text-xs font-medium">
+              No active field connections to transform. Create connections in the Field Mapping Workspace first.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {connections.map((conn) => (
+                <div key={conn.id} className="p-4 rounded-2xl border border-slate-800/90 bg-[#080d22] space-y-3 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-white">
+                      {conn.sourceField} → {conn.destField}
+                    </span>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/40 uppercase">
+                      {conn.transformation || 'raw'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-400">
+                      Select Field Transformation:
+                    </label>
+                    <select
+                      value={conn.transformation || 'none'}
+                      onChange={(e) => handleUpdateTransformation(conn.id, e.target.value)}
+                      className="w-full text-xs bg-[#070b1c] border border-slate-700 text-slate-200 rounded-xl p-2.5 font-medium focus:outline-none focus:border-cyan-400 cursor-pointer shadow-inner"
+                    >
+                      {TRANSFORMATION_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={opt.id} className="bg-[#0c122b] text-slate-200">
+                          {opt.label} — {opt.description}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CONTENT: 3. LIVE OUTPUT PREVIEW */}
+      {activeTab === 'preview' && (
+        <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-5">
+          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-white">Live Transformed Output Preview</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Real-time preview of source records mapped to destination fields with transformations applied.
+              </p>
+            </div>
+            <button
+              onClick={generatePreview}
+              className="text-xs font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-3.5 py-1.5 rounded-xl hover:bg-cyan-900/60 flex items-center space-x-1.5 cursor-pointer shadow-sm"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Output</span>
+            </button>
+          </div>
+
+          {previewLoading ? (
+            <div className="py-12 text-center text-slate-400 text-xs">Generating live pipeline preview...</div>
+          ) : previewRows.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 text-xs font-medium">
+              No transformed rows to display. Ensure connections are mapped.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-800">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#070b1c] border-b border-slate-800 text-cyan-300 font-bold">
+                  <tr>
+                    {destinationFields.map((dest) => (
+                      <th key={dest.name} className="px-4 py-3 font-mono">
+                        {dest.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {previewRows.slice(0, 15).map((row, idx) => (
+                    <tr key={idx} className="hover:bg-[#0d1636]/50">
+                      {destinationFields.map((dest) => (
+                        <td key={dest.name} className="px-4 py-2.5 font-mono text-slate-200">
+                          {row[dest.name] !== null && row[dest.name] !== undefined ? (
+                            String(row[dest.name])
+                          ) : (
+                            <span className="text-slate-600 italic">null</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CONTENT: 4. STAGE 5: PROCESSING ENGINE */}
+      {activeTab === 'engine' && (
+        <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-6">
+          <div className="border-b border-cyan-500/15 pb-4">
+            <h2 className="text-base font-bold text-white">Pipeline Execution & Processing Status</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Review schema validation, connection completeness, and trigger processing batch.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
+              <span className="text-xs font-semibold text-slate-400">Pipeline Validation</span>
+              <p className="text-lg font-bold text-emerald-400 mt-1">Ready for Execution</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {mappedSourceCount} inputs wired to {connectedDestCount} targets.
+              </p>
+            </div>
+
+            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
+              <span className="text-xs font-semibold text-slate-400">Target Pipeline Schema</span>
+              <p className="text-lg font-bold text-white mt-1">{totalDestCount} Destination Fields</p>
+              <p className="text-[11px] text-slate-500 mt-1">{transformationsCount} inline transform rules</p>
+            </div>
+
+            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
+              <span className="text-xs font-semibold text-slate-400">Processing Mode</span>
+              <p className="text-lg font-bold text-cyan-400 mt-1">Chunked Stream Engine</p>
+              <p className="text-[11px] text-slate-500 mt-1">High-throughput 64KB buffer memory slice</p>
+            </div>
+          </div>
+
+          <div className="pt-4 flex justify-end">
+            <button
+              onClick={() => {
+                handleSavePipeline();
+                showNotification('success', 'Processing pipeline triggered successfully!');
+              }}
+              className="px-6 py-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all flex items-center space-x-2 cursor-pointer"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>Execute Pipeline & Preprocessing</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* BOTTOM ACTION TOOLBAR */}
+      <div className="rounded-3xl bg-[#0c122b]/95 border border-cyan-500/20 p-4 sm:p-5 shadow-2xl backdrop-blur-2xl flex items-center justify-between flex-wrap gap-4">
+        {/* Left Actions: Discard & Clear */}
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleDiscardChanges}
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-slate-300 bg-[#080d22] hover:bg-[#0d1636] border border-slate-800 hover:border-cyan-500/40 shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span>Discard Changes</span>
+          </button>
+
+          <button
+            onClick={handleClearAll}
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-rose-300 bg-rose-950/30 hover:bg-rose-900/40 border border-rose-500/30 shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Clear All</span>
+          </button>
+        </div>
+
+        {/* Right Actions: Preview Changes & Save Pipeline */}
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setActiveTab('preview')}
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-slate-200 bg-[#0d1636] hover:bg-[#121e4a] border border-cyan-500/30 shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Eye className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Preview Changes</span>
+          </button>
+
+          <button
+            onClick={handleSavePipeline}
+            disabled={isSaving}
+            className="px-6 py-2.5 rounded-full text-xs font-bold text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{isSaving ? 'Saving...' : 'Save Pipeline'}</span>
+          </button>
         </div>
       </div>
     </div>

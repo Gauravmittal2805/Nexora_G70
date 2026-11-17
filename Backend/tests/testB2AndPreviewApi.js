@@ -5,6 +5,7 @@ const os = require('os');
 const { S3Client } = require('@aws-sdk/client-s3');
 const {
   getS3Client,
+  resetS3Client,
   isB2Configured,
   getB2BucketName,
   getB2Region,
@@ -47,6 +48,7 @@ async function runB2AndPreviewTests() {
   process.env.B2_ENDPOINT = 'https://s3.us-west-004.backblazeb2.com';
 
   assert.strictEqual(isB2Configured(), true, 'B2 should be recognized as configured when env vars set');
+  resetS3Client();
   const mockS3Client = getS3Client();
   assert(mockS3Client instanceof S3Client, 'getS3Client should return an AWS SDK S3Client instance');
 
@@ -71,6 +73,7 @@ async function runB2AndPreviewTests() {
 
   // Restore env for local fallback operations
   process.env = { ...origEnv };
+  resetS3Client();
 
   // =========================================================================
   // Requirement 3: Implement file upload to B2

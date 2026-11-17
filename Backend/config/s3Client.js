@@ -136,8 +136,13 @@ const verifyB2Connection = async () => {
   }
 };
 
+const resetS3Client = () => {
+  s3ClientInstance = null;
+};
+
 module.exports = {
   getS3Client,
+  resetS3Client,
   isB2Configured,
   getB2BucketName,
   getB2Region,

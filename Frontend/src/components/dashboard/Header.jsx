@@ -5,7 +5,6 @@ import { getFirstName } from '../../utils/userUtils';
 import NexoraLogo from '../common/NexoraLogo';
 import {
   Menu,
-  Search,
   Bell,
   UploadCloud,
   ChevronRight,
@@ -26,7 +25,6 @@ const Header = ({ onOpenMobileMenu }) => {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
@@ -121,29 +119,6 @@ const Header = ({ onOpenMobileMenu }) => {
           <h1 className="text-base sm:text-lg font-black text-white tracking-tight leading-none mt-1 truncate">
             {getPageTitle(currentSegment)}
           </h1>
-        </div>
-
-        {/* Real-Time Engine Active Pill (Desktop) */}
-        <div className="hidden 2xl:flex items-center space-x-2 px-3.5 py-1 rounded-full bg-cyan-950/50 border border-cyan-500/30 text-cyan-300 text-xs font-semibold ml-4 shadow-[0_0_12px_rgba(6,182,212,0.15)] shrink-0">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span>Stream Ingestion Active</span>
-        </div>
-      </div>
-
-      {/* Middle: Quick Search (Spacious, Flexible & Modern) */}
-      <div className="hidden md:flex items-center relative flex-1 min-w-[220px] max-w-md mx-2 lg:mx-6">
-        <Search className="w-4 h-4 text-cyan-400/70 absolute left-4 pointer-events-none" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search datasets, columns, schema..."
-          className="w-full bg-[#0a0f24] hover:bg-[#0d1538] focus:bg-[#0d1538] text-sm text-white placeholder-slate-500 pl-11 pr-14 py-2.5 rounded-2xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all font-medium shadow-inner"
-        />
-        <div className="absolute right-3.5 flex items-center pointer-events-none">
-          <kbd className="text-[11px] bg-[#070b1c] border border-slate-700/80 px-2 py-0.5 rounded-lg text-slate-400 font-mono shadow-xs">
-            ⌘K
-          </kbd>
         </div>
       </div>
 
