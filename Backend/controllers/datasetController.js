@@ -6,6 +6,7 @@ const Dataset = require('../models/Dataset');
 const { parseCsvStream, parseJsonStream } = require('../utils/streamParsers');
 const { uploadDatasetFile, getDownloadUrl, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
 const { profileDataset, profileInMemoryRecords } = require('../utils/datasetProfiler');
+const { validateFieldMappings } = require('../utils/mappingValidator');
 
 /**
  * Helper to find a dataset by either its custom datasetId (UUID) or Mongo _id
@@ -739,13 +740,160 @@ const getDatasetProfile = async (req, res, next) => {
 };
 
 /**
+ * Helper to extract standardized column definitions from dataset
+ */
+const extractDatasetColumns = (dataset) => {
+  const rawCols = dataset.metadata?.columns || dataset.columns || [];
+  return rawCols.map((c) => ({
+    name: c.name,
+    type: c.type || (c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : c.dataType === 'date' ? 'DateTime' : 'String'),
+    dataType: c.dataType || 'string',
+    nullCount: c.nullCount || c.missingCount || 0,
+    missingCount: c.nullCount || c.missingCount || 0,
+    sampleValues: c.sampleValues || []
+  }));
+};
+
+/**
+ * Normalizes, validates, and synchronizes Source-to-Target mapping structures
+ */
+const normalizeAndSyncMapping = (dataset, inputMapping = {}) => {
+  const columns = extractDatasetColumns(dataset);
+  const existingMapping = dataset.mapping || {};
+
+  let fieldMappings = Array.isArray(inputMapping.fieldMappings)
+    ? inputMapping.fieldMappings
+    : Array.isArray(existingMapping.fieldMappings) && existingMapping.fieldMappings.length > 0
+    ? existingMapping.fieldMappings
+    : [];
+
+  // If no fieldMappings, check if destinations or connections exist
+  if (fieldMappings.length === 0) {
+    const destinations = inputMapping.destinations || existingMapping.destinations || [];
+    const connections = inputMapping.connections || existingMapping.connections || [];
+
+    if (destinations.length > 0 || connections.length > 0) {
+      fieldMappings = destinations.map((d) => {
+        const conn = connections.find((c) => c.destField === d.name);
+        return {
+          id: d.id || `map-${d.name}`,
+          targetField: d.name,
+          sourceField: conn?.sourceField || '',
+          targetType: d.type || 'String',
+          required: Boolean(d.required),
+          transformation: conn?.transformation || 'none',
+          defaultValue: d.defaultValue || null
+        };
+      });
+    } else {
+      // Auto-initialize standard 1:1 mapping from source columns
+      fieldMappings = columns.map((col) => {
+        const isId = /^(id|customer_?id|_id|uuid|key)$/i.test(col.name);
+        const isTarget = /^(target|label|churn|alert|status|outcome)$/i.test(col.name);
+        return {
+          id: `map-${col.name}`,
+          targetField: col.name,
+          sourceField: col.name,
+          targetType: col.type || 'String',
+          required: isId || isTarget,
+          transformation: 'none',
+          defaultValue: null
+        };
+      });
+    }
+  }
+
+  // Sanitize field mappings
+  fieldMappings = fieldMappings.map((m, idx) => ({
+    id: m.id || `map-${m.targetField || idx}`,
+    targetField: String(m.targetField || '').trim(),
+    sourceField: String(m.sourceField || '').trim(),
+    targetType: m.targetType || 'String',
+    required: Boolean(m.required),
+    transformation: m.transformation || 'none',
+    defaultValue: m.defaultValue !== undefined ? m.defaultValue : null
+  }));
+
+  // Sync destinations
+  const destinations = fieldMappings.map((m) => ({
+    id: `dest-${m.targetField}`,
+    name: m.targetField,
+    type: m.targetType,
+    required: m.required
+  }));
+
+  // Sync connections
+  const connections = fieldMappings
+    .filter((m) => m.sourceField)
+    .map((m) => ({
+      id: `conn-${m.sourceField}-${m.targetField}`,
+      sourceField: m.sourceField,
+      destField: m.targetField,
+      transformation: m.transformation || 'none'
+    }));
+
+  // Derive standard ML mappings
+  let target = inputMapping.target || existingMapping.target || '';
+  let id = inputMapping.id || existingMapping.id || '';
+
+  if (!target) {
+    const targetMap = fieldMappings.find((m) => /^(target|label|churn|alert|status)$/i.test(m.targetField));
+    if (targetMap && targetMap.sourceField) target = targetMap.sourceField;
+  }
+  if (!id) {
+    const idMap = fieldMappings.find((m) => /id$|^id|_id$/i.test(m.targetField));
+    if (idMap && idMap.sourceField) id = idMap.sourceField;
+  }
+
+  const numerical = fieldMappings
+    .filter((m) => {
+      const t = (m.targetType || '').toLowerCase();
+      return (t === 'integer' || t === 'float' || t === 'number') && m.sourceField && m.sourceField !== target && m.sourceField !== id;
+    })
+    .map((m) => m.sourceField);
+
+  const categorical = fieldMappings
+    .filter((m) => {
+      const t = (m.targetType || '').toLowerCase();
+      return (t === 'string' || t === 'boolean') && m.sourceField && m.sourceField !== target && m.sourceField !== id && !numerical.includes(m.sourceField);
+    })
+    .map((m) => m.sourceField);
+
+  const mappedSources = new Set(fieldMappings.filter((m) => m.sourceField).map((m) => m.sourceField));
+  const ignored = columns.filter((c) => !mappedSources.has(c.name)).map((c) => c.name);
+
+  // Run full validation
+  const validation = validateFieldMappings(fieldMappings, columns);
+
+  const fullMapping = {
+    target,
+    id,
+    numerical,
+    categorical,
+    datetime: Array.isArray(inputMapping.datetime) ? inputMapping.datetime : (existingMapping.datetime || []),
+    ignored,
+    fieldMappings,
+    destinations,
+    connections,
+    validationSummary: {
+      isValid: validation.isValid,
+      errorCount: validation.errorCount,
+      warningCount: validation.warningCount
+    },
+    updatedAt: new Date()
+  };
+
+  return { columns, fieldMappings, destinations, connections, fullMapping, validation };
+};
+
+/**
  * @desc    Get field mapping for dataset
  * @route   GET /api/datasets/:id/mapping
- * @access  Private (Restricted to dataset owner)
+ * @access  Private / Public
  */
 const getFieldMapping = async (req, res, next) => {
   try {
-    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
+    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
@@ -754,23 +902,24 @@ const getFieldMapping = async (req, res, next) => {
       });
     }
 
+    const { columns, fieldMappings, destinations, connections, fullMapping, validation } =
+      normalizeAndSyncMapping(dataset, dataset.mapping || {});
+
     return res.status(200).json({
       success: true,
-      datasetId: dataset.datasetId,
+      datasetId: dataset.datasetId || dataset.id,
       name: dataset.name || dataset.fileName,
-      columns: (dataset.metadata?.columns || []).map((c) => ({
-        name: c.name,
-        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
-        missingCount: c.nullCount || 0
-      })),
-      mapping: dataset.mapping || {
-        target: '',
-        id: '',
-        numerical: [],
-        categorical: [],
-        datetime: [],
-        ignored: []
-      }
+      fileName: dataset.fileName || dataset.name,
+      fileSize: dataset.fileSize || dataset.sizeBytes || 0,
+      rowCount: dataset.metadata?.rowCount || dataset.rowCount || 0,
+      columnCount: dataset.metadata?.columnCount || dataset.columnCount || 0,
+      format: (dataset.fileType || 'csv').toUpperCase(),
+      columns,
+      fieldMappings,
+      destinations,
+      connections,
+      mapping: fullMapping,
+      validation
     });
   } catch (error) {
     next(error);
@@ -780,11 +929,11 @@ const getFieldMapping = async (req, res, next) => {
 /**
  * @desc    Save/update dataset field mapping
  * @route   POST /api/datasets/:id/mapping
- * @access  Private (Restricted to dataset owner)
+ * @access  Private / Public
  */
 const saveFieldMapping = async (req, res, next) => {
   try {
-    const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
+    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
@@ -793,29 +942,81 @@ const saveFieldMapping = async (req, res, next) => {
       });
     }
 
-    const { mapping } = req.body;
-    if (!mapping || typeof mapping !== 'object') {
+    const mappingPayload = req.body.mapping || req.body;
+    if (!mappingPayload || typeof mappingPayload !== 'object') {
       return res.status(400).json({
         success: false,
         message: 'Invalid mapping object provided'
       });
     }
 
-    dataset.mapping = {
-      target: mapping.target || '',
-      id: mapping.id || '',
-      numerical: Array.isArray(mapping.numerical) ? mapping.numerical : [],
-      categorical: Array.isArray(mapping.categorical) ? mapping.categorical : [],
-      datetime: Array.isArray(mapping.datetime) ? mapping.datetime : [],
-      ignored: Array.isArray(mapping.ignored) ? mapping.ignored : []
-    };
+    const { columns, fieldMappings, destinations, connections, fullMapping, validation } =
+      normalizeAndSyncMapping(dataset, mappingPayload);
 
-    await dataset.save();
+    // If request specifies strict mode and has blocking errors
+    if (req.query?.strict === 'true' && !validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: `Field mapping validation failed with ${validation.errorCount} error(s).`,
+        errors: validation.errors,
+        warnings: validation.warnings,
+        validation
+      });
+    }
+
+    dataset.mapping = fullMapping;
+
+    if (dataset.save && typeof dataset.save === 'function') {
+      if (dataset.markModified) {
+        dataset.markModified('mapping');
+      }
+      await dataset.save();
+    }
 
     return res.status(200).json({
       success: true,
       message: `Field mapping saved successfully for "${dataset.name || dataset.fileName}".`,
-      mapping: dataset.mapping
+      datasetId: dataset.datasetId || dataset.id,
+      columns,
+      fieldMappings,
+      destinations,
+      connections,
+      mapping: fullMapping,
+      validation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Validate field mapping against dataset schema
+ * @route   POST /api/datasets/:id/mapping/validate
+ * @access  Private / Public
+ */
+const validateMappingEndpoint = async (req, res, next) => {
+  try {
+    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
+
+    if (!dataset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dataset not found.'
+      });
+    }
+
+    const mappingPayload = req.body.mapping || req.body || {};
+    const { validation, fieldMappings, columns } = normalizeAndSyncMapping(dataset, mappingPayload);
+
+    return res.status(200).json({
+      success: true,
+      datasetId: dataset.datasetId || dataset.id,
+      isValid: validation.isValid,
+      errorCount: validation.errorCount,
+      warningCount: validation.warningCount,
+      errors: validation.errors,
+      warnings: validation.warnings,
+      stats: validation.stats
     });
   } catch (error) {
     next(error);
@@ -901,90 +1102,10 @@ const deleteDataset = async (req, res, next) => {
 };
 
 /**
- * @desc    Get dataset field mapping
- * @route   GET /api/datasets/:id/mapping
- * @access  Public / Private
+ * @desc    Aliases for backward-compatibility
  */
-const getDatasetMapping = async (req, res, next) => {
-  try {
-    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
-
-    if (!dataset) {
-      return res.status(404).json({
-        success: false,
-        message: 'Dataset not found.'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      datasetId: dataset.datasetId || dataset.id,
-      name: dataset.name,
-      columns: dataset.metadata?.columns || dataset.columns || [],
-      mapping: dataset.mapping || {
-        target: '',
-        id: '',
-        numerical: [],
-        categorical: [],
-        datetime: [],
-        ignored: []
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Save dataset field mapping
- * @route   POST /api/datasets/:id/mapping
- * @access  Public / Private
- */
-const saveDatasetMapping = async (req, res, next) => {
-  try {
-    const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
-
-    if (!dataset) {
-      return res.status(404).json({
-        success: false,
-        message: 'Dataset not found.'
-      });
-    }
-
-    const { mapping } = req.body;
-    if (!mapping || typeof mapping !== 'object') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid mapping payload provided.'
-      });
-    }
-
-    const updatedMapping = {
-      target: mapping.target || '',
-      id: mapping.id || '',
-      numerical: Array.isArray(mapping.numerical) ? mapping.numerical : [],
-      categorical: Array.isArray(mapping.categorical) ? mapping.categorical : [],
-      datetime: Array.isArray(mapping.datetime) ? mapping.datetime : [],
-      ignored: Array.isArray(mapping.ignored) ? mapping.ignored : [],
-      updatedAt: new Date()
-    };
-
-    if (dataset.save) {
-      dataset.mapping = updatedMapping;
-      await dataset.save();
-    } else {
-      dataset.mapping = updatedMapping;
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `Field mapping saved successfully for "${dataset.name || dataset.fileName}".`,
-      mapping: updatedMapping
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+const getDatasetMapping = getFieldMapping;
+const saveDatasetMapping = saveFieldMapping;
 
 /**
  * @desc    Apply transformations to a dataset's preview rows using configuration or field mapping
@@ -1002,10 +1123,45 @@ const transformDatasetRows = async (req, res, next) => {
       });
     }
 
-    const { config, overrides, useMapping = true, rows: inputRows } = req.body;
+    const { config, overrides, useMapping = true, rows: inputRows, projectToTarget = true } = req.body;
 
     // Use input rows if provided, or preview rows from dataset
     const rowsToTransform = inputRows || dataset.previewData || dataset.sampleRows || [];
+
+    const fieldMappings = dataset.mapping?.fieldMappings;
+    if (useMapping && Array.isArray(fieldMappings) && fieldMappings.length > 0 && projectToTarget) {
+      const transformedRows = rowsToTransform.map((record) => {
+        const out = {};
+        for (const m of fieldMappings) {
+          if (!m.targetField) continue;
+          let val = m.sourceField ? record[m.sourceField] : undefined;
+          if (val === undefined || val === null || val === '') {
+            if (m.defaultValue !== undefined && m.defaultValue !== null && m.defaultValue !== '') {
+              val = m.defaultValue;
+            }
+          }
+          if (val !== undefined && val !== null) {
+            const trans = (m.transformation || 'none').toLowerCase();
+            if (trans === 'trim' && typeof val === 'string') val = val.trim();
+            else if (trans === 'uppercase' && typeof val === 'string') val = String(val).toUpperCase();
+            else if (trans === 'lowercase' && typeof val === 'string') val = String(val).toLowerCase();
+            else if (trans === 'to_number') val = Number(val) || 0;
+            else if (trans === 'to_boolean') val = Boolean(val === true || val === 'true' || val === 1 || val === 'yes' || val === '1');
+          }
+          out[m.targetField] = val !== undefined ? val : null;
+        }
+        return out;
+      });
+
+      return res.status(200).json({
+        success: true,
+        datasetId: dataset.datasetId || dataset.id,
+        name: dataset.name || dataset.fileName,
+        mode: 'source_to_target',
+        count: transformedRows.length,
+        rows: transformedRows
+      });
+    }
 
     let activeConfig;
     if (useMapping && dataset.mapping) {
@@ -1078,6 +1234,7 @@ module.exports = {
   deleteDataset,
   getDatasetMapping,
   saveDatasetMapping,
+  validateMappingEndpoint,
   transformDatasetRows,
   transformRecordEndpoint,
   SAMPLE_DATASETS

@@ -121,12 +121,18 @@ const datasetSchema = new mongoose.Schema({
     trim: true
   }],
   mapping: {
-    target: { type: String, default: '' },
-    id: { type: String, default: '' },
-    numerical: [{ type: String }],
-    categorical: [{ type: String }],
-    datetime: [{ type: String }],
-    ignored: [{ type: String }]
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({
+      target: '',
+      id: '',
+      numerical: [],
+      categorical: [],
+      datetime: [],
+      ignored: [],
+      fieldMappings: [],
+      destinations: [],
+      connections: []
+    })
   },
   profile: {
     type: mongoose.Schema.Types.Mixed,

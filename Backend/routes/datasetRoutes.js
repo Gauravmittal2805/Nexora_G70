@@ -10,6 +10,7 @@ const {
   getDatasetProfile,
   getFieldMapping,
   saveFieldMapping,
+  validateMappingEndpoint,
   getDatasetDownloadUrl,
   deleteDataset,
   getDatasetMapping,
@@ -45,17 +46,14 @@ router.get('/:id/mapping', getFieldMapping);
 // @route   POST /api/datasets/:id/mapping
 router.post('/:id/mapping', saveFieldMapping);
 
+// @route   POST /api/datasets/:id/mapping/validate
+router.post('/:id/mapping/validate', validateMappingEndpoint);
+
 // @route   GET /api/datasets/:id/download
 router.get('/:id/download', getDatasetDownloadUrl);
 
 // @route   DELETE /api/datasets/:id
 router.delete('/:id', deleteDataset);
-
-// @route   GET /api/datasets/:id/mapping
-router.get('/:id/mapping', getDatasetMapping);
-
-// @route   POST /api/datasets/:id/mapping
-router.post('/:id/mapping', saveDatasetMapping);
 
 // @route   POST /api/datasets/:id/transform
 router.post('/:id/transform', transformDatasetRows);
