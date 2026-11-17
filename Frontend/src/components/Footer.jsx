@@ -52,8 +52,8 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/dashboard/pipelines" className="hover:text-cyan-400 transition-colors">
-                  ML Studio Pipelines
+                <Link to="/dashboard/datasets/mapping" className="hover:text-cyan-400 transition-colors">
+                  Field Mapping Studio
                 </Link>
               </li>
             </ul>

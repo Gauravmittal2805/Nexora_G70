@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import DatasetDropzone from '../components/datasets/DatasetDropzone';
-import DatasetMetadataForm from '../components/datasets/DatasetMetadataForm';
 import DatasetPreviewTable from '../components/datasets/DatasetPreviewTable';
 import datasetService from '../services/datasetService';
 import {
@@ -148,7 +147,7 @@ const DatasetUpload = () => {
             Dataset Ingestion & Schema Inspector
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Upload raw CSV or JSON files, configure metadata, and transmit to the backend using Axios and FormData.
+            Upload raw CSV or JSON files, inspect tabular records, and transmit to the backend using Axios and FormData.
           </p>
         </div>
 
@@ -253,26 +252,13 @@ const DatasetUpload = () => {
         />
       </section>
 
-      {/* Step 2: Metadata & Parsing Settings */}
-      {parsedData && (
-        <section className="space-y-3 animate-fade-in">
-          <div className="flex items-center space-x-2 text-white font-bold text-sm">
-            <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs">
-              2
-            </span>
-            <span>Metadata & Schema Configuration</span>
-          </div>
-          <DatasetMetadataForm metadata={metadata} setMetadata={setMetadata} />
-        </section>
-      )}
-
-      {/* Step 3: Dataset Preview Table Layout */}
+      {/* Step 2: Dataset Preview Table Layout */}
       {parsedData && (
         <section className="space-y-3 animate-fade-in">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-white font-bold text-sm">
               <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs">
-                3
+                2
               </span>
               <span>Dataset Preview & Statistical Health</span>
             </div>

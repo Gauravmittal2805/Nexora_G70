@@ -7,6 +7,7 @@ const {
   getDatasets,
   getDatasetById,
   getDatasetPreview,
+  getDatasetProfile,
   getDatasetDownloadUrl,
   deleteDataset,
   getDatasetMapping,
@@ -32,6 +33,9 @@ router.get('/:id', getDatasetById);
 
 // @route   GET /api/datasets/:id/preview
 router.get('/:id/preview', getDatasetPreview);
+
+// @route   GET /api/datasets/:id/profile
+router.get('/:id/profile', getDatasetProfile);
 
 // @route   GET /api/datasets/:id/download
 router.get('/:id/download', getDatasetDownloadUrl);

@@ -14,10 +14,9 @@ import {
   LogOut,
   LayoutDashboard,
   Database,
-  GitBranch,
-  Cpu,
   BarChart3,
   Sparkles,
+  ArrowLeft,
 } from 'lucide-react';
 
 const Header = ({ onOpenMobileMenu }) => {
@@ -55,6 +54,14 @@ const Header = ({ onOpenMobileMenu }) => {
   const currentSegment = pathnames[pathnames.length - 1] || 'dashboard';
 
   const getPageTitle = (part) => {
+    if (
+      location.pathname.startsWith('/dashboard/datasets/') &&
+      part !== 'datasets' &&
+      part !== 'upload' &&
+      part !== 'mapping'
+    ) {
+      return 'Dataset Details & Profiling';
+    }
     switch (part) {
       case 'dashboard':
         return 'Dashboard Overview';
@@ -62,12 +69,8 @@ const Header = ({ onOpenMobileMenu }) => {
         return 'Datasets Catalog';
       case 'upload':
         return 'Upload Dataset';
-      case 'pipelines':
-        return 'ML Pipelines Studio';
-      case 'features':
-        return 'Feature Engineering';
-      case 'models':
-        return 'Model Studio';
+      case 'mapping':
+        return 'Field Mapping Studio';
       case 'analytics':
         return 'Analytics & Telemetry';
       case 'settings':
@@ -80,7 +83,7 @@ const Header = ({ onOpenMobileMenu }) => {
   return (
     <header className="sticky top-0 z-30 bg-[#070b1c]/95 backdrop-blur-2xl border-b border-cyan-500/15 px-6 sm:px-8 lg:px-10 h-20 flex items-center justify-between gap-6 transition-all">
       {/* Left: Mobile Menu Button & Clean Page Breadcrumb Header */}
-      <div className="flex items-center space-x-4 min-w-0">
+      <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
         <button
           onClick={onOpenMobileMenu}
           className="md:hidden p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 border border-slate-800 transition-colors shrink-0 cursor-pointer"
@@ -88,6 +91,16 @@ const Header = ({ onOpenMobileMenu }) => {
         >
           <Menu className="w-5 h-5" />
         </button>
+
+        {/* Back to Landing Page Icon Button (Icon only) */}
+        <Link
+          to="/"
+          className="p-2.5 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/40 transition-all flex items-center justify-center shrink-0 shadow-xs group"
+          title="Back to Landing Page"
+          aria-label="Back to Landing Page"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+        </Link>
 
         <div className="min-w-0">
           {/* Breadcrumb Hierarchy */}
@@ -118,13 +131,13 @@ const Header = ({ onOpenMobileMenu }) => {
       </div>
 
       {/* Middle: Quick Search (Spacious, Flexible & Modern) */}
-      <div className="hidden md:flex items-center relative flex-1 max-w-sm lg:max-w-md mx-4 lg:mx-8 shrink-0">
+      <div className="hidden md:flex items-center relative flex-1 min-w-[220px] max-w-md mx-2 lg:mx-6">
         <Search className="w-4 h-4 text-cyan-400/70 absolute left-4 pointer-events-none" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search datasets, schema, pipelines..."
+          placeholder="Search datasets, columns, schema..."
           className="w-full bg-[#0a0f24] hover:bg-[#0d1538] focus:bg-[#0d1538] text-sm text-white placeholder-slate-500 pl-11 pr-14 py-2.5 rounded-2xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all font-medium shadow-inner"
         />
         <div className="absolute right-3.5 flex items-center pointer-events-none">
@@ -183,12 +196,12 @@ const Header = ({ onOpenMobileMenu }) => {
                 <div className="p-3 hover:bg-white/5 transition-colors cursor-pointer">
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="text-xs font-semibold text-white">
-                      ML Ingestion Active
+                      Data Engine Active
                     </span>
                     <span className="text-[10px] text-slate-400">1h ago</span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-tight">
-                    Preprocessing pipelines initialized and ready for training.
+                    Schema inference engine initialized and ready for preprocessing.
                   </p>
                 </div>
               </div>
@@ -242,11 +255,11 @@ const Header = ({ onOpenMobileMenu }) => {
                   <span>Dataset Catalog</span>
                 </Link>
                 <Link
-                  to="/dashboard/pipelines"
+                  to="/dashboard/datasets/upload"
                   className="flex items-center space-x-2.5 px-4 py-2 hover:bg-white/5 hover:text-white transition-colors"
                 >
-                  <GitBranch className="w-3.5 h-3.5 text-purple-400" />
-                  <span>ML Pipelines</span>
+                  <UploadCloud className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Upload Dataset</span>
                 </Link>
               </div>
 

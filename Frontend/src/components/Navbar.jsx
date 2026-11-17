@@ -11,8 +11,6 @@ import {
   LayoutDashboard,
   Database,
   UploadCloud,
-  GitBranch,
-  Cpu,
   BarChart3,
   Menu,
   X,
@@ -142,15 +140,15 @@ const Navbar = () => {
                 </Link>
 
                 <Link
-                  to="/dashboard/models"
+                  to="/dashboard/datasets"
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-                    location.pathname.startsWith('/dashboard/models')
+                    location.pathname.startsWith('/dashboard/datasets')
                       ? 'text-cyan-400 bg-cyan-950/50 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-bold'
                       : 'text-slate-300 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Cpu className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Model Studio</span>
+                  <Database className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Datasets</span>
                 </Link>
 
                 <Link
@@ -297,11 +295,11 @@ const Navbar = () => {
                           <span>Datasets Catalog</span>
                         </Link>
                         <Link
-                          to="/dashboard/pipelines"
+                          to="/dashboard/datasets/upload"
                           className="flex items-center space-x-2 px-4 py-2 hover:bg-white/5 hover:text-white transition-colors"
                         >
-                          <GitBranch className="w-3.5 h-3.5 text-purple-400" />
-                          <span>ML Pipelines</span>
+                          <UploadCloud className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Upload Dataset</span>
                         </Link>
                       </div>
 
@@ -372,11 +370,11 @@ const Navbar = () => {
                 <span>Dashboard</span>
               </Link>
               <Link
-                to="/dashboard/models"
+                to="/dashboard/datasets"
                 className="flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-white/5"
               >
-                <Cpu className="w-4 h-4 text-purple-400" />
-                <span>Model Studio</span>
+                <Database className="w-4 h-4 text-cyan-400" />
+                <span>Datasets</span>
               </Link>
               <Link
                 to="/dashboard/analytics"

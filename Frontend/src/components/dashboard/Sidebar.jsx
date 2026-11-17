@@ -1,15 +1,14 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getFirstName } from '../../utils/userUtils';
 import NexoraLogo from '../common/NexoraLogo';
+import datasetService, { formatBytes } from '../../services/datasetService';
 import {
   LayoutDashboard,
   Database,
   UploadCloud,
-  GitBranch,
   Layers,
-  Cpu,
   BarChart3,
   Settings,
   ChevronLeft,
@@ -23,6 +22,32 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [usedBytes, setUsedBytes] = useState(0);
+
+  useEffect(() => {
+    const calc = () => {
+      const list = datasetService.getDatasets() || [];
+      const total = list.reduce(
+        (acc, d) => acc + (d.sizeBytes || d.fileSize || 0),
+        0
+      );
+      setUsedBytes(total);
+    };
+    calc();
+    window.addEventListener('storage', calc);
+    const interval = setInterval(calc, 4000);
+    return () => {
+      window.removeEventListener('storage', calc);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const MAX_STORAGE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
+  const storagePercentage = Math.min(
+    100,
+    Math.max(usedBytes > 0 ? 1 : 0, Math.round((usedBytes / MAX_STORAGE_BYTES) * 100))
+  );
 
   const handleLogout = () => {
     logout();
@@ -56,30 +81,6 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
           name: 'Field Mapping',
           path: '/dashboard/datasets/mapping',
           icon: Layers,
-          badge: null,
-        },
-      ],
-    },
-    {
-      group: 'ML WORKFLOW',
-      items: [
-        {
-          name: 'Pipelines',
-          path: '/dashboard/pipelines',
-          icon: GitBranch,
-          badge: 'Beta',
-          badgeColor: 'bg-indigo-950 text-indigo-300 border border-indigo-500/40',
-        },
-        {
-          name: 'Feature Engineering',
-          path: '/dashboard/features',
-          icon: Layers,
-          badge: null,
-        },
-        {
-          name: 'Model Studio',
-          path: '/dashboard/models',
-          icon: Cpu,
           badge: null,
         },
       ],
@@ -196,10 +197,15 @@ const Sidebar = ({ isCollapsed, toggleCollapse, mobileOpen, closeMobile }) => {
         <div className="p-4 mx-4 mb-4 rounded-2xl bg-[#0a0f24] border border-cyan-500/20 shadow-lg">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2 font-medium">
             <span>Storage Usage</span>
-            <span className="text-cyan-300 font-bold">1.4 GB / 10 GB</span>
+            <span className="text-cyan-300 font-bold">
+              {formatBytes(usedBytes)} / 10 GB
+            </span>
           </div>
           <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-            <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2 rounded-full w-[14%]" />
+            <div
+              className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2 rounded-full transition-all duration-500"
+              style={{ width: `${storagePercentage}%` }}
+            />
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2.5">
             <span>Workspace: Active</span>

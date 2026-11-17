@@ -88,7 +88,7 @@ const TARGET_SLOTS = [
   {
     key: 'ignored',
     label: 'Excluded / Ignored Columns',
-    description: 'Free text notes, high-cardinality IDs, or redundant columns omitted from downstream pipelines.',
+    description: 'Free text notes, high-cardinality IDs, or redundant columns omitted from downstream analytics and export.',
     icon: EyeOff,
     color: 'slate',
     accentBorder: 'border-slate-700',

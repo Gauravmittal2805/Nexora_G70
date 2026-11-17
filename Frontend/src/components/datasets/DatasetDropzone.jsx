@@ -6,7 +6,6 @@ import {
   AlertCircle,
   X,
   FileCode,
-  Sparkles,
   Loader2,
   HardDrive,
   Calendar,
@@ -15,42 +14,6 @@ import { formatBytes, parseCSVText } from '../../services/datasetService';
 
 const ACCEPTED_EXTENSIONS = ['.csv', '.json', '.xlsx', '.tsv'];
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
-
-// Sample CSV & JSON data
-const SAMPLE_CSV_CHURN = `CustomerID,Age,Gender,Tenure_Months,Monthly_Charges,Total_Charges,Contract_Type,Churn
-CUST-7021,34,Female,12,65.40,784.80,Month-to-month,No
-CUST-8842,52,Male,48,98.20,4713.60,Two year,No
-CUST-1094,29,Female,3,79.85,239.55,Month-to-month,Yes
-CUST-4501,41,Male,24,54.10,1298.40,One year,No
-CUST-9018,63,Female,8,104.90,839.20,Month-to-month,Yes
-CUST-2231,38,Male,36,45.00,1620.00,One year,No
-CUST-3189,47,Female,60,112.50,6750.00,Two year,No
-CUST-5512,23,Male,2,85.30,170.60,Month-to-month,Yes
-CUST-6043,31,Female,18,70.15,1262.70,Month-to-month,No
-CUST-7789,56,Male,42,93.00,3906.00,One year,No
-CUST-8102,45,Female,15,62.50,937.50,Month-to-month,No
-CUST-9423,39,Male,7,88.75,621.25,Month-to-month,Yes
-CUST-3310,61,Female,54,108.20,5842.80,Two year,No
-CUST-4112,27,Male,5,49.90,249.50,Month-to-month,No
-CUST-5678,35,Female,29,75.40,2186.60,One year,No
-CUST-6901,49,Male,11,91.10,1002.10,Month-to-month,Yes
-CUST-7234,33,Female,22,58.00,1276.00,One year,No
-CUST-8890,58,Male,66,119.45,7883.70,Two year,No`;
-
-const SAMPLE_JSON_IOT = `[
-  { "device_id": "DEV-101", "temperature_c": 22.4, "humidity_pct": 45.2, "pressure_kpa": 101.3, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-102", "temperature_c": 28.1, "humidity_pct": 60.5, "pressure_kpa": 100.8, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-103", "temperature_c": 35.8, "humidity_pct": 82.0, "pressure_kpa": 98.4, "status": "WARNING", "alert": true },
-  { "device_id": "DEV-104", "temperature_c": 19.5, "humidity_pct": 40.1, "pressure_kpa": 102.1, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-105", "temperature_c": 39.2, "humidity_pct": 88.4, "pressure_kpa": 97.9, "status": "CRITICAL", "alert": true },
-  { "device_id": "DEV-106", "temperature_c": 21.8, "humidity_pct": 48.0, "pressure_kpa": 101.5, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-107", "temperature_c": 24.3, "humidity_pct": 52.6, "pressure_kpa": 101.0, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-108", "temperature_c": 31.7, "humidity_pct": 71.4, "pressure_kpa": 99.2, "status": "WARNING", "alert": true },
-  { "device_id": "DEV-109", "temperature_c": 20.1, "humidity_pct": 43.8, "pressure_kpa": 101.8, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-110", "temperature_c": 23.5, "humidity_pct": 50.2, "pressure_kpa": 101.2, "status": "ONLINE", "alert": false },
-  { "device_id": "DEV-111", "temperature_c": 41.0, "humidity_pct": 91.2, "pressure_kpa": 96.5, "status": "CRITICAL", "alert": true },
-  { "device_id": "DEV-112", "temperature_c": 22.9, "humidity_pct": 46.7, "pressure_kpa": 101.4, "status": "ONLINE", "alert": false }
-]`;
 
 const DatasetDropzone = ({
   onFileParsed,
@@ -195,19 +158,6 @@ const DatasetDropzone = ({
         fileInputRef.current.accept = ACCEPTED_EXTENSIONS.join(',');
       }
       fileInputRef.current.click();
-    }
-  };
-
-  const handleLoadSample = (sampleType) => {
-    if (isUploading) return;
-    if (sampleType === 'churn') {
-      const sampleBlob = new Blob([SAMPLE_CSV_CHURN], { type: 'text/csv' });
-      const sampleFile = new File([sampleBlob], 'Customer_Churn_Analysis.csv', { type: 'text/csv' });
-      processFile(sampleFile);
-    } else {
-      const sampleBlob = new Blob([SAMPLE_JSON_IOT], { type: 'application/json' });
-      const sampleFile = new File([sampleBlob], 'IoT_Telemetry_Sensors.json', { type: 'application/json' });
-      processFile(sampleFile);
     }
   };
 
@@ -403,32 +353,6 @@ const DatasetDropzone = ({
           <span className="font-medium">{errorMessage}</span>
         </div>
       )}
-
-      {/* Sample dataset quick loader pills */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-2xl bg-[#0a0f24] border border-cyan-500/20 text-xs">
-        <div className="flex items-center space-x-2 text-slate-300 font-semibold">
-          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-          <span>Need demo data? Try pre-packaged samples:</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            disabled={isUploading}
-            onClick={() => handleLoadSample('churn')}
-            className="px-3 py-1.5 rounded-lg bg-[#070b1c] hover:bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-semibold transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-          >
-            Customer Churn (CSV)
-          </button>
-          <button
-            type="button"
-            disabled={isUploading}
-            onClick={() => handleLoadSample('iot')}
-            className="px-3 py-1.5 rounded-lg bg-[#070b1c] hover:bg-purple-950 text-purple-300 border border-purple-500/30 font-semibold transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-          >
-            IoT Sensors (JSON)
-          </button>
-        </div>
-      </div>
     </div>
   );
 };

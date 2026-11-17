@@ -267,7 +267,7 @@ const DatasetPreviewTable = ({
         <TableIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
         <h4 className="text-base font-bold text-white">No Dataset Data Available</h4>
         <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-          Upload a file or choose a sample dataset above to view live tabular records and column stats.
+          Upload a dataset file to view live tabular records and column stats.
         </p>
         {onClose && (
           <button
