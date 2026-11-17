@@ -13,9 +13,14 @@
         "url": {
           "raw": "http://localhost:5001/api/health",
           "protocol": "http",
-          "host": ["localhost"],
+          "host": [
+            "localhost"
+          ],
           "port": "5001",
-          "path": ["api", "health"]
+          "path": [
+            "api",
+            "health"
+          ]
         }
       },
       "response": []
@@ -40,9 +45,15 @@
             "url": {
               "raw": "http://localhost:5001/api/auth/register",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "auth", "register"]
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
             }
           },
           "response": []
@@ -64,9 +75,15 @@
             "url": {
               "raw": "http://localhost:5001/api/auth/login",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "auth", "login"]
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
             }
           },
           "response": []
@@ -114,9 +131,15 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets/upload",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets", "upload"]
+              "path": [
+                "api",
+                "datasets",
+                "upload"
+              ]
             }
           },
           "response": []
@@ -134,14 +157,31 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets?page=1&limit=10&sortBy=createdAt&sortOrder=desc",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets"],
+              "path": [
+                "api",
+                "datasets"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "10" },
-                { "key": "sortBy", "value": "createdAt" },
-                { "key": "sortOrder", "value": "desc" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "desc"
+                }
               ]
             }
           },
@@ -160,9 +200,15 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets/:id",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets", ":id"],
+              "path": [
+                "api",
+                "datasets",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -186,11 +232,21 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets/:id/preview?limit=20",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets", ":id", "preview"],
+              "path": [
+                "api",
+                "datasets",
+                ":id",
+                "preview"
+              ],
               "query": [
-                { "key": "limit", "value": "20" }
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
               ],
               "variable": [
                 {
@@ -215,9 +271,16 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets/:id/download",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets", ":id", "download"],
+              "path": [
+                "api",
+                "datasets",
+                ":id",
+                "download"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -241,13 +304,465 @@
             "url": {
               "raw": "http://localhost:5001/api/datasets/:id",
               "protocol": "http",
-              "host": ["localhost"],
+              "host": [
+                "localhost"
+              ],
               "port": "5001",
-              "path": ["api", "datasets", ":id"],
+              "path": [
+                "api",
+                "datasets",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
                   "value": "dataset_id_here"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Field Mappings",
+      "description": "APIs for creating, reading, updating, validating, and deleting dataset field mapping configurations stored in MongoDB",
+      "item": [
+        {
+          "name": "Create Field Mapping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Mapping created successfully with ID\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.mapping).to.have.property(\"mappingId\");",
+                  "    pm.environment.set(\"mappingId\", jsonData.mapping.mappingId);",
+                  "    pm.environment.set(\"datasetId\", jsonData.mapping.datasetId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasetId\": \"{{datasetId}}\",\n  \"name\": \"Alpha Sales Field Mapping\",\n  \"description\": \"Field mapping from alpha sales source columns to standard target schema\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"product\",\n      \"targetField\": \"product_name\",\n      \"targetType\": \"string\",\n      \"transformation\": \"trim\",\n      \"isRequired\": true\n    },\n    {\n      \"sourceField\": \"price\",\n      \"targetField\": \"unit_price\",\n      \"targetType\": \"number\",\n      \"transformation\": \"to_number\",\n      \"isRequired\": true\n    },\n    {\n      \"sourceField\": \"category\",\n      \"targetField\": \"category_code\",\n      \"targetType\": \"string\",\n      \"transformation\": \"uppercase\",\n      \"defaultValue\": \"GENERAL\"\n    }\n  ],\n  \"targetRole\": {\n    \"target\": \"unit_price\",\n    \"id\": \"id\",\n    \"numerical\": [\n      \"price\"\n    ],\n    \"categorical\": [\n      \"product\",\n      \"category\"\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Field Mapping by Dataset ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Mapping returned for dataset\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.mapping).to.be.an(\"object\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/mappings/:datasetId",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings",
+                ":datasetId"
+              ],
+              "variable": [
+                {
+                  "key": "datasetId",
+                  "value": "{{datasetId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Field Mapping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Mapping updated successfully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.mapping.name).to.include(\"Updated\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alpha Sales Field Mapping - Updated\",\n  \"description\": \"Updated field mapping configurations with custom types and transformations\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"product\",\n      \"targetField\": \"product_title\",\n      \"targetType\": \"string\",\n      \"transformation\": \"trim\",\n      \"isRequired\": true\n    },\n    {\n      \"sourceField\": \"price\",\n      \"targetField\": \"final_price\",\n      \"targetType\": \"number\",\n      \"transformation\": \"to_number\",\n      \"isRequired\": true\n    },\n    {\n      \"sourceField\": \"id\",\n      \"targetField\": \"sku_id\",\n      \"targetType\": \"string\",\n      \"transformation\": \"trim\",\n      \"isRequired\": true\n    }\n  ],\n  \"targetRole\": {\n    \"target\": \"final_price\",\n    \"id\": \"id\",\n    \"numerical\": [\n      \"price\"\n    ],\n    \"categorical\": [\n      \"product\"\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings/:datasetId",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings",
+                ":datasetId"
+              ],
+              "variable": [
+                {
+                  "key": "datasetId",
+                  "value": "{{datasetId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Field Mappings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/mappings?page=1&limit=10",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative Test - Source Column Not in Dataset (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Error specifies non-existent column\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message).to.include(\"does not exist\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasetId\": \"{{datasetId}}\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"non_existent_column_xyz\",\n      \"targetField\": \"some_target\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative Test - Duplicate Source Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Error flags duplicate source fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message).to.include(\"Duplicate source field\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasetId\": \"{{datasetId}}\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"product\",\n      \"targetField\": \"name_one\"\n    },\n    {\n      \"sourceField\": \"product\",\n      \"targetField\": \"name_two\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative Test - Duplicate Target Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Error flags duplicate target fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message).to.include(\"Duplicate target field\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasetId\": \"{{datasetId}}\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"product\",\n      \"targetField\": \"common_name\"\n    },\n    {\n      \"sourceField\": \"price\",\n      \"targetField\": \"common_name\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative Test - Non-Existent Dataset ID (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datasetId\": \"invalid-dataset-id-00000000-0000\",\n  \"fieldMappings\": [\n    {\n      \"sourceField\": \"col1\",\n      \"targetField\": \"col_target\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5001/api/mappings",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Field Mapping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/mappings/:datasetId",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "mappings",
+                ":datasetId"
+              ],
+              "variable": [
+                {
+                  "key": "datasetId",
+                  "value": "{{datasetId}}"
                 }
               ]
             }

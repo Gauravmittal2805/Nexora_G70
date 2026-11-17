@@ -8,6 +8,7 @@ const { verifyB2Connection, isB2Configured } = require('./config/s3Client');
 
 const authRoutes = require('./routes/authRoutes');
 const datasetRoutes = require('./routes/datasetRoutes');
+const mappingRoutes = require('./routes/mappingRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
@@ -44,10 +45,27 @@ if (!fs.existsSync(uploadsDir)) {
 // Static directory for uploaded datasets (when local storage fallback is used)
 app.use('/uploads', express.static(uploadsDir));
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: '🚀 Nexora Backend API Server is running.',
+    version: '1.0.0',
+    documentation: 'Use Postman or frontend client to interact with the API endpoints below.',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      datasets: '/api/datasets',
+      mappings: '/api/mappings'
+    }
+  });
+});
+
 // 4. Mount API Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/datasets', datasetRoutes);
+app.use('/api/mappings', mappingRoutes);
 
 // 5. Error handling middleware
 app.use(notFound);
