@@ -507,6 +507,31 @@ export const datasetService = {
    * Get field mapping for dataset (from backend or local)
    */
   getFieldMapping: async (id) => {
+    // 1. Try dedicated /mappings/:id endpoint
+    try {
+      const mapRes = await api.get(`/mappings/${id}`);
+      if (mapRes.data && mapRes.data.success && mapRes.data.mapping) {
+        const m = mapRes.data.mapping;
+        const ds = mapRes.data.dataset;
+        const cols = ds?.columns
+          ? ds.columns.map((c) => (typeof c === 'string' ? { name: c, type: 'String' } : c))
+          : [];
+        return {
+          success: true,
+          datasetId: m.datasetId || id,
+          name: ds?.name || m.name,
+          columns: cols,
+          fieldMappings: m.fieldMappings || [],
+          mapping: m.targetRole || m,
+          destinations: m.destinations || [],
+          connections: m.connections || []
+        };
+      }
+    } catch {
+      // Fallback to /datasets/:id/mapping
+    }
+
+    // 2. Try dataset-nested mapping endpoint
     try {
       const res = await api.get(`/datasets/${id}/mapping`);
       if (res.data && res.data.success) {

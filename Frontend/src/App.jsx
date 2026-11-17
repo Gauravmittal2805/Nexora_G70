@@ -90,6 +90,10 @@ function App() {
             path="/datasets/upload"
             element={<Navigate to="/dashboard/datasets/upload" replace />}
           />
+          <Route path="/datasets/mapping" element={<Navigate to="/dashboard/datasets/mapping" replace />} />
+          <Route path="/datasets/:id/mapping" element={<Navigate to="/dashboard/datasets/mapping" replace />} />
+          <Route path="/mapping" element={<Navigate to="/dashboard/datasets/mapping" replace />} />
+          <Route path="/field-mapping" element={<Navigate to="/dashboard/datasets/mapping" replace />} />
 
           {/* Catch-all 404 Route */}
           <Route
