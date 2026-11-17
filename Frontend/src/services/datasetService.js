@@ -123,6 +123,28 @@ export function autoSuggestMapping(columns = []) {
 }
 
 /**
+ * Intelligent Source-to-Target mapping generator based on source dataset columns
+ */
+export function autoSuggestSourceToTargetMapping(columns = []) {
+  if (!columns || columns.length === 0) return [];
+  return columns.map((col, idx) => {
+    const colName = col.name || String(col);
+    const rawType = col.type || (col.dataType === 'number' ? 'Float' : col.dataType === 'boolean' ? 'Boolean' : col.dataType === 'date' ? 'DateTime' : 'String');
+    const isId = /^(id|customer_?id|_id|uuid|key)$/i.test(colName);
+    const isTarget = /^(target|label|churn|alert|status|outcome|flag)$/i.test(colName);
+    return {
+      id: `map-${colName}-${idx}`,
+      targetField: colName,
+      sourceField: colName,
+      targetType: rawType,
+      required: isId || isTarget,
+      transformation: 'none',
+      defaultValue: ''
+    };
+  });
+}
+
+/**
  * Infer data type of a column based on an array of values
  */
 export function inferDataType(values) {
@@ -488,35 +510,94 @@ export const datasetService = {
     try {
       const res = await api.get(`/datasets/${id}/mapping`);
       if (res.data && res.data.success) {
-        return res.data.mapping;
+        return res.data;
       }
-    } catch {
-      // Backend offline, fallback to local
+    } catch (err) {
+      console.warn('Backend get mapping error (falling back to local):', err?.message);
     }
 
     const ds = datasetService.getDatasetById(id);
     if (ds) {
-      return ds.mapping || autoSuggestMapping(ds.columns || []);
+      const cols = ds.columns || ds.metadata?.columns || [];
+      const autoMappings = autoSuggestSourceToTargetMapping(cols);
+      return {
+        success: true,
+        datasetId: ds.id || ds.datasetId || id,
+        name: ds.name || ds.fileName,
+        fileName: ds.fileName || ds.name,
+        fileSize: ds.fileSize || ds.sizeBytes || 0,
+        rowCount: ds.rowCount || ds.metadata?.rowCount || 0,
+        columnCount: cols.length,
+        format: ds.format || ds.fileType || 'CSV',
+        columns: cols,
+        fieldMappings: ds.mapping?.fieldMappings || autoMappings,
+        destinations: ds.mapping?.destinations || [],
+        connections: ds.mapping?.connections || [],
+        mapping: ds.mapping || autoSuggestMapping(cols),
+        validation: { isValid: true, errorCount: 0, warningCount: 0, errors: [], warnings: [] }
+      };
     }
-    return { target: '', id: '', numerical: [], categorical: [], datetime: [], ignored: [] };
+    return null;
   },
 
   /**
    * Save field mapping for dataset
    */
-  saveFieldMapping: async (id, mapping) => {
+  saveFieldMapping: async (id, mappingPayload, options = {}) => {
+    let result = null;
+    const queryParam = options.strict ? '?strict=true' : '';
     try {
-      await api.post(`/datasets/${id}/mapping`, { mapping });
+      const res = await api.post(`/datasets/${id}/mapping${queryParam}`, { mapping: mappingPayload });
+      if (res.data && res.data.success) {
+        result = res.data;
+      }
     } catch (err) {
-      console.warn('Backend save mapping error (saving locally):', err.message);
+      console.warn('Backend save mapping error:', err.message);
+      if (err.data && (err.data.errors || err.data.validation)) {
+        const enriched = new Error(err.data.message || 'Mapping validation failed');
+        enriched.validation = err.data.validation || { errors: err.data.errors, warnings: err.data.warnings };
+        enriched.errors = err.data.errors || [];
+        enriched.warnings = err.data.warnings || [];
+        throw enriched;
+      }
+      throw err;
     }
 
     const ds = datasetService.getDatasetById(id);
     if (ds) {
-      ds.mapping = mapping;
+      ds.mapping = mappingPayload;
       datasetService.saveDataset(ds);
     }
-    return mapping;
+    return result || { success: true, mapping: mappingPayload };
+  },
+
+  /**
+   * Validate field mapping against dataset schema
+   */
+  validateFieldMapping: async (id, mappingPayload) => {
+    try {
+      const res = await api.post(`/datasets/${id}/mapping/validate`, { mapping: mappingPayload });
+      if (res.data) {
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('Backend validate mapping error:', err.message);
+      if (err.data) return err.data;
+    }
+    return null;
+  },
+
+  /**
+   * Apply transformations and project dataset preview rows using field mapping
+   */
+  transformDatasetRows: async (id, payload = {}) => {
+    try {
+      const res = await api.post(`/datasets/${id}/transform`, payload);
+      return res.data;
+    } catch (err) {
+      console.warn('Backend transform dataset rows error:', err.message);
+      throw err;
+    }
   },
 
   /**
