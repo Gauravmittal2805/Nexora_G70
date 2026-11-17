@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
- * Protect routes - ensures request has a valid Bearer JWT token
+ * Protect routes - strictly ensures request has a valid Bearer JWT token
  */
 const protect = async (req, res, next) => {
   let token;
@@ -28,7 +28,7 @@ const protect = async (req, res, next) => {
         });
       }
 
-      next();
+      return next();
     } catch (error) {
       console.error('Authentication Error:', error.message);
       return res.status(401).json({
@@ -44,4 +44,31 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+/**
+ * Optional authentication middleware
+ * Attaches req.user if a valid token is provided, but allows the request to continue if not
+ */
+const optionalProtect = async (req, res, next) => {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'fallback_secret_key'
+      );
+      req.user = await User.findById(decoded.id).select('-password');
+    } catch {
+      // Continue unauthenticated if token is invalid
+      req.user = null;
+    }
+  }
+  return next();
+};
+
+module.exports = {
+  protect,
+  optionalProtect
+};

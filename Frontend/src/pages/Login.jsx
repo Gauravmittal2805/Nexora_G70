@@ -8,7 +8,7 @@ import {
   EyeOff,
   Activity,
   Database,
-  Cpu,
+  Layers,
   ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
@@ -42,7 +42,7 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Interactive showcase state for Login right panel
-  const [activeTab, setActiveTab] = useState('pipelines');
+  const [activeTab, setActiveTab] = useState('engine');
 
   // Default redirect path is now the Landing Page ('/'), not the dashboard
   const redirectPath = location.state?.from?.pathname || '/';
@@ -440,7 +440,7 @@ const Login = () => {
             {/* Tabs */}
             <div className="flex items-center space-x-1.5 border-b border-white/20 pb-2 mb-2.5">
               {[
-                { id: 'pipelines', label: 'Pipelines', icon: Cpu },
+                { id: 'engine', label: 'Engine', icon: Layers },
                 { id: 'datasets', label: 'Datasets', icon: Database },
                 { id: 'metrics', label: 'Health', icon: Activity },
               ].map((tab) => {
@@ -466,7 +466,7 @@ const Login = () => {
 
             {/* Dynamic Content based on activeTab */}
             <div className="text-xs">
-              {activeTab === 'pipelines' && (
+              {activeTab === 'engine' && (
                 <div className="space-y-1.5 animate-fade-in">
                   <div className="flex items-center justify-between text-[11px] font-semibold text-amber-200">
                     <span>Tabular_Stream_Engine</span>
@@ -478,7 +478,7 @@ const Login = () => {
                     <div className="bg-amber-400 h-full rounded-full w-4/5 animate-pulse" />
                   </div>
                   <p className="text-[10px] text-white/70">
-                    Awaiting tabular dataset upload • Ready for real-time inference
+                    Awaiting tabular dataset upload • Ready for real-time processing
                   </p>
                 </div>
               )}
