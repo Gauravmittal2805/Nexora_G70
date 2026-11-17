@@ -1,28 +1,41 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
-const mongoose = require('mongoose');
-const connectDB = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
 const cors = require('cors');
-const multer = require('multer');
 const fs = require('fs');
+const connectDB = require('./config/db');
+const { verifyB2Connection, isB2Configured } = require('./config/s3Client');
+
+const authRoutes = require('./routes/authRoutes');
+const datasetRoutes = require('./routes/datasetRoutes');
+const healthRoutes = require('./routes/healthRoutes');
+const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Connect to MongoDB
+// 1. Connect to MongoDB Atlas / Local MongoDB
 connectDB();
 
-// Middleware
+// 2. Verify Backblaze B2 bucket connection on startup
+if (isB2Configured()) {
+  verifyB2Connection().then((status) => {
+    if (status.connected) {
+      console.log(`✅ Backblaze B2 Bucket Connected: "${status.bucket}" (${status.region})`);
+    } else {
+      console.warn(`⚠️ Backblaze B2 Connection Notice: ${status.message}`);
+    }
+  });
+} else {
+  console.log('ℹ️ Backblaze B2: Unconfigured in environment (Graceful local storage fallback active).');
+}
+
+// 3. Middlewares
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Auth Routes (MongoDB backed)
-app.use('/api/auth', authRoutes);
-
-// Storage directory setup
+// Storage directory setup for local uploads fallback
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -198,39 +211,14 @@ app.get('/api/datasets/:id/preview', (req, res) => {
           allAvailableRows = parsed.rows;
         }
       }
-    } catch {
-      // Fallback to sampleRows
     }
-  }
-
-  const totalAvailable = allAvailableRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalAvailable / limit));
-  const validPage = Math.min(page, totalPages);
-  const startIndex = (validPage - 1) * limit;
-  const paginatedRows = allAvailableRows.slice(startIndex, startIndex + limit);
-
-  return res.json({
-    success: true,
-    datasetId: dataset.id || dataset.datasetId,
-    name: dataset.name,
-    format: dataset.format,
-    fileSizeBytes: dataset.sizeBytes,
-    totalRows: dataset.rowCount || totalAvailable,
-    totalAvailableRows: totalAvailable,
-    columns: dataset.columns,
-    pagination: {
-      page: validPage,
-      limit,
-      totalPages,
-      totalCount: totalAvailable,
-      hasNextPage: validPage < totalPages,
-      hasPrevPage: validPage > 1,
-    },
-    previewCount: paginatedRows.length,
-    rows: paginatedRows,
   });
 });
 
+// 4. Mount API Routes
+app.use('/api/health', healthRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/datasets', datasetRoutes);
 // Get comprehensive dataset profiling statistics and column metadata
 app.get('/api/datasets/:id/profile', (req, res) => {
   const { id } = req.params;
@@ -527,19 +515,14 @@ app.delete('/api/datasets/:id', (req, res) => {
   res.json({ success: true, message: 'Dataset deleted successfully.' });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err);
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
-  }
-  res.status(500).json({ success: false, message: err.message || 'Internal Server Error' });
-});
+// 5. Error handling middleware
+app.use(notFound);
+app.use(errorHandler);
 
 // Start Server
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Nexora Backend API running on http://localhost:${PORT}`);
+    console.log(`🚀 Nexora Backend API running on http://localhost:${PORT}`);
   });
 }
 

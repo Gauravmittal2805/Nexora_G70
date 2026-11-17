@@ -9,7 +9,6 @@ const columnSchema = new mongoose.Schema({
   },
   dataType: {
     type: String,
-    enum: ['string', 'number', 'boolean', 'date', 'object', 'array', 'mixed', 'null'],
     default: 'string'
   },
   nullCount: {
@@ -32,7 +31,7 @@ const datasetSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false,
     index: true
   },
   fileName: {
@@ -57,7 +56,6 @@ const datasetSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Storage URL is required']
   },
-  // Additional rich metadata for analytics, preview & B2 integration
   name: {
     type: String,
     trim: true,
@@ -80,7 +78,7 @@ const datasetSchema = new mongoose.Schema({
     },
     bucket: {
       type: String,
-      default: 'local'
+      default: 'nexora-datasets'
     },
     key: {
       type: String
@@ -120,9 +118,17 @@ const datasetSchema = new mongoose.Schema({
   }],
   tags: [{
     type: String,
-    trim: true,
-    lowercase: true
+    trim: true
   }],
+  mapping: {
+    target: { type: String, default: '' },
+    id: { type: String, default: '' },
+    numerical: [{ type: String }],
+    categorical: [{ type: String }],
+    datetime: [{ type: String }],
+    ignored: [{ type: String }],
+    updatedAt: { type: Date }
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -131,7 +137,7 @@ const datasetSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound indexes for user query performance and text search
+// Indexes for query performance and text search
 datasetSchema.index({ userId: 1, createdAt: -1 });
 datasetSchema.index({ fileName: 'text', name: 'text', description: 'text' });
 
