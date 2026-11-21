@@ -99,6 +99,20 @@ const datasetSchema = new mongoose.Schema({
     index: true
   },
   metadata: {
+    filename: {
+      type: String,
+      trim: true
+    },
+    fileSize: {
+      type: Number
+    },
+    uploadDate: {
+      type: Date,
+      default: Date.now
+    },
+    fileType: {
+      type: String
+    },
     rowCount: {
       type: Number,
       default: 0

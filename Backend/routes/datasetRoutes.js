@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { handleUpload } = require('../middleware/uploadMiddleware');
-const { optionalProtect } = require('../middleware/authMiddleware');
+const { protect, optionalProtect } = require('../middleware/authMiddleware');
 const {
   uploadDataset,
   getDatasets,
+  getMyDatasets,
   getDatasetById,
   getDatasetPreview,
   getDatasetProfile,
@@ -30,6 +31,12 @@ router.post('/upload', handleUpload, uploadDataset);
 
 // @route   GET /api/datasets
 router.get('/', getDatasets);
+
+// @route   GET /api/datasets/my - fetch datasets of logged-in user
+router.get('/my', protect, getMyDatasets);
+
+// @route   GET /api/datasets/user - fetch datasets of logged-in user
+router.get('/user', protect, getMyDatasets);
 
 // @route   GET /api/datasets/:id
 router.get('/:id', getDatasetById);

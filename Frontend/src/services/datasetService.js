@@ -649,11 +649,31 @@ export const datasetService = {
   },
 
   /**
-   * Get single dataset by ID
+   * Get single dataset by ID from cache
    */
   getDatasetById: (id) => {
     const datasets = datasetService.getDatasets();
     return datasets.find((d) => d.id === id || d.datasetId === id) || null;
+  },
+
+  /**
+   * Fetch single dataset details from Backend API by ID
+   */
+  fetchDatasetById: async (id) => {
+    try {
+      const res = await api.get(`/datasets/${id}`);
+      if (res.data && res.data.success) {
+        const item = res.data.dataset || res.data.data;
+        if (item) {
+          const normalized = normalizeDataset(item);
+          datasetService.saveDataset(normalized);
+          return normalized;
+        }
+      }
+    } catch (err) {
+      console.warn(`Fetch dataset by ID ${id} API failed:`, err.message);
+    }
+    return datasetService.getDatasetById(id);
   },
 
   /**
