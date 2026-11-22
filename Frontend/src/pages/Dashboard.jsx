@@ -1,57 +1,230 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFirstName } from '../utils/userUtils';
-import datasetService, { formatBytes } from '../services/datasetService';
+import datasetService, { formatBytes, formatDate, formatRelativeTime } from '../services/datasetService';
+import DatasetPreviewTable from '../components/datasets/DatasetPreviewTable';
 import {
   UploadCloud,
   Database,
-  ArrowRight,
   Sparkles,
   CheckCircle2,
-  ShieldCheck,
   FileSpreadsheet,
   Activity,
   HardDrive,
   Cpu,
   Search,
-  Filter,
   Layers,
   BarChart3,
-  Clock,
   Eye,
-  Check,
   TrendingUp,
+  Trash2,
+  LayoutGrid,
+  List,
+  RefreshCw,
+  AlertCircle,
+  Calendar,
+  X,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const previewSectionRef = useRef(null);
+
+  // Dataset listing & API states
   const [datasets, setDatasets] = useState(() => datasetService.getDatasets());
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [notification, setNotification] = useState(null);
+
+  // Search, filter & view layout mode ('table' | 'grid')
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('ALL');
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
 
+  // Dataset preview states
+  const [previewingDatasetId, setPreviewingDatasetId] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+
+  // Connect the dashboard with the dataset listing API: GET /api/datasets
+  const loadDatasets = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const result = await datasetService.fetchDatasets();
+      const datasetList = result.datasets || [];
+      setDatasets(datasetList);
+      setIsOffline(Boolean(result.isOffline));
+
+      if (isManualRefresh) {
+        setNotification({
+          type: 'success',
+          message: `Synchronized ${datasetList.length} datasets from API.`,
+        });
+        setTimeout(() => setNotification(null), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to load datasets on dashboard:', err);
+      setError(err.message || 'Failed to fetch datasets from API.');
+      // Fallback to local catalog
+      const cached = datasetService.getDatasets();
+      setDatasets(cached);
+      setIsOffline(true);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  // Initial fetch on mount & auto-poll interval
   useEffect(() => {
     let active = true;
-    const fetchLatest = () => {
-      datasetService
-        .fetchDatasets()
-        .then((data) => {
-          if (active && data) {
-            setDatasets(data);
-          }
-        })
-        .catch(() => {});
-    };
+    loadDatasets();
 
-    fetchLatest();
-    const interval = setInterval(fetchLatest, 10000);
+    const interval = setInterval(() => {
+      if (active) {
+        datasetService
+          .fetchDatasets()
+          .then((result) => {
+            if (active && result?.datasets) {
+              setDatasets(result.datasets);
+              setIsOffline(Boolean(result.isOffline));
+            }
+          })
+          .catch(() => {});
+      }
+    }, 15000);
+
     return () => {
       active = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [loadDatasets]);
 
+  // Handle dataset deletion: DELETE /api/datasets/:id
+  const handleDeleteDataset = async (id, name, e) => {
+    if (e) e.stopPropagation();
+    const confirmed = window.confirm(
+      `Are you sure you want to delete dataset "${name}"?\nThis action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const updated = await datasetService.deleteDataset(id);
+      setDatasets(updated);
+
+      // Close preview if the deleted dataset was open
+      if (previewingDatasetId === id) {
+        setPreviewingDatasetId(null);
+        setPreviewData(null);
+      }
+
+      setNotification({
+        type: 'success',
+        message: `Dataset "${name}" was deleted successfully.`,
+      });
+      setTimeout(() => setNotification(null), 3500);
+    } catch (err) {
+      console.error('Failed to delete dataset:', err);
+      setNotification({
+        type: 'error',
+        message: `Failed to delete dataset "${name}": ${err.message}`,
+      });
+    }
+  };
+
+  // Handle dataset preview toggle & streaming preview rows: GET /api/datasets/:id/preview
+  const handleTogglePreview = async (dataset, e) => {
+    if (e) e.stopPropagation();
+
+    // Toggle off if clicking the already open dataset
+    if (previewingDatasetId === dataset.id) {
+      setPreviewingDatasetId(null);
+      setPreviewData(null);
+      return;
+    }
+
+    setPreviewingDatasetId(dataset.id);
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    // Smooth scroll down to preview container
+    setTimeout(() => {
+      previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 120);
+
+    try {
+      const preview = await datasetService.getDatasetPreview(dataset.id, { page: 1, limit: 10 });
+      setPreviewData({
+        ...preview,
+        datasetId: dataset.id,
+        name: dataset.name,
+        fileName: dataset.fileName || dataset.name,
+        format: dataset.format,
+        fileSizeBytes: dataset.sizeBytes || dataset.fileSize,
+        totalRows: dataset.rowCount,
+      });
+    } catch (err) {
+      console.error('Failed to load dataset preview:', err);
+      setPreviewError(err.message || 'Failed to retrieve preview rows from server.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Handle preview pagination page change
+  const handlePreviewPageChange = async (newPage) => {
+    if (!previewingDatasetId) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await datasetService.getDatasetPreview(previewingDatasetId, {
+        page: newPage,
+        limit: previewData?.pagination?.limit || 10,
+      });
+      setPreviewData((prev) => ({
+        ...prev,
+        ...preview,
+      }));
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to retrieve page.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Handle preview pagination page size change
+  const handlePreviewSizeChange = async (newLimit) => {
+    if (!previewingDatasetId) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await datasetService.getDatasetPreview(previewingDatasetId, {
+        page: 1,
+        limit: newLimit,
+      });
+      setPreviewData((prev) => ({
+        ...prev,
+        ...preview,
+      }));
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to change page size.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Statistical calculations across all ingested datasets
   const totalRecords = datasets.reduce(
     (acc, d) => acc + (d.rowCount || (d.metadata && d.metadata.rowCount) || 0),
     0
@@ -86,18 +259,15 @@ const Dashboard = () => {
           )
         )
       : 0;
-  const generalScore =
-    hasDatasets && totalEstimatedCells > 0
-      ? (healthPercentage / 10).toFixed(1)
-      : '0.0';
 
-  // Filter datasets by search and format
+  // Filter datasets by search query and file format
   const filteredDatasets = datasets.filter((d) => {
-    const matchesSearch =
-      d.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      d.description?.toLowerCase().includes(searchFilter.toLowerCase());
+    const q = searchFilter.toLowerCase();
+    const nameMatch = (d.name && d.name.toLowerCase().includes(q)) || (d.fileName && d.fileName.toLowerCase().includes(q));
+    const descMatch = d.description?.toLowerCase().includes(q);
+    const matchesSearch = !searchFilter.trim() || nameMatch || descMatch;
     const matchesFormat =
-      selectedFormat === 'ALL' || d.format.toUpperCase() === selectedFormat;
+      selectedFormat === 'ALL' || (d.format && d.format.toUpperCase() === selectedFormat);
     return matchesSearch && matchesFormat;
   });
 
@@ -209,7 +379,7 @@ const Dashboard = () => {
         </div>
 
         {/* Model Accuracy Benchmark */}
-        <div className="bg-[#0a0f24] rounded-3xl border border-slate-800 p-5 shadow-lg hover:border-pink-500/40 hover:shadow-[0_0_20px_rgba(236,72,153,0.15)] transition-all group">
+        <div className="bg-[#0a0f24] rounded-3xl border border-pink-500/40 p-5 shadow-lg hover:shadow-[0_0_20px_rgba(236,72,153,0.15)] transition-all group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Data Quality & Health
@@ -228,7 +398,6 @@ const Dashboard = () => {
 
       {/* ========================================================= */}
       {/* NEXUX DASHBOARD WIDGETS (Radial Gauges & Stream Wave Chart) */}
-      {/* Inspired directly by the bottom-right image preview */}
       {/* ========================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left: Interactive Stream Wave Chart (lg:col-span-8) */}
@@ -317,18 +486,15 @@ const Dashboard = () => {
                   <circle cx="240" cy="40" r="3" fill="#ffffff" />
                 </>
               ) : (
-                <>
-                  {/* Flat baseline when zero datasets exist */}
-                  <line
-                    x1="0"
-                    y1="145"
-                    x2="500"
-                    y2="145"
-                    stroke="#334155"
-                    strokeWidth="2"
-                    strokeDasharray="6 4"
-                  />
-                </>
+                <line
+                  x1="0"
+                  y1="145"
+                  x2="500"
+                  y2="145"
+                  stroke="#334155"
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                />
               )}
             </svg>
 
@@ -362,7 +528,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Right: Circular / Radial Gauges (lg:col-span-4) matching Nexux preview */}
+        {/* Right: Circular / Radial Gauges (lg:col-span-4) */}
         <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
           {/* Gauge 1: Data Quality Score */}
           <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 p-5 shadow-xl flex items-center justify-between">
@@ -455,25 +621,53 @@ const Dashboard = () => {
       </div>
 
       {/* ========================================================= */}
-      {/* RECENT DATASETS TABLE (Nexux Dark Style) */}
+      {/* INGESTED DATASETS CATALOG (Connected to Backend Listing API) */}
+      {/* Table & Card Layout with Filename, Type, Size, Upload Date, Delete & Preview */}
       {/* ========================================================= */}
       <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/20 shadow-xl overflow-hidden">
         {/* Header & Filter Controls */}
         <div className="p-6 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#070b1c]">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Ingested Datasets Catalog</h3>
-              <p className="text-xs text-slate-400">
-                Preview schemas, record counts, and inspect tabular structures.
+              <div className="flex items-center space-x-2.5">
+                <h3 className="text-base font-bold text-white">Ingested Datasets Catalog</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-500/40">
+                  {datasets.length} Available
+                </span>
+                {/* Connection Status Indicator */}
+                <span
+                  className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    isOffline
+                      ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+                      : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                  }`}
+                  title={isOffline ? 'Using local offline storage' : 'Connected to Backend API'}
+                >
+                  {isOffline ? (
+                    <>
+                      <WifiOff className="w-3 h-3 text-amber-400" />
+                      <span>Offline</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wifi className="w-3 h-3 text-emerald-400" />
+                      <span>API Live</span>
+                    </>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Inspect schemas, view live records, and manage uploaded data sources.
               </p>
             </div>
           </div>
 
-          {/* Interactive Search & Filter Options */}
+          {/* Interactive Search, Filter, Layout Switcher & Refresh */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Search Input */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5 pointer-events-none" />
               <input
@@ -481,10 +675,19 @@ const Dashboard = () => {
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
                 placeholder="Search datasets..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-800 bg-[#050814] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 w-44"
+                className="pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-800 bg-[#050814] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 w-40 sm:w-48 font-medium"
               />
+              {searchFilter && (
+                <button
+                  onClick={() => setSearchFilter('')}
+                  className="absolute right-2.5 top-2 text-slate-500 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
+            {/* Format Filter Chips */}
             <div className="flex items-center space-x-1 bg-[#050814] p-1 rounded-xl text-xs font-semibold border border-slate-800">
               {['ALL', 'CSV', 'JSON'].map((fmt) => (
                 <button
@@ -502,9 +705,49 @@ const Dashboard = () => {
               ))}
             </div>
 
+            {/* View Mode Switcher: Table vs Card Layout */}
+            <div className="flex items-center bg-[#050814] p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-cyan-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Table Layout"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-cyan-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Card Layout"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Refresh from API Button */}
+            <button
+              type="button"
+              onClick={() => loadDatasets(true)}
+              disabled={isRefreshing || isLoading}
+              className="p-2 rounded-xl bg-[#050814] hover:bg-white/5 border border-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-40"
+              title="Refresh datasets from API"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+            </button>
+
+            {/* Upload Button */}
             <Link
               to="/dashboard/datasets/upload"
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
             >
               <UploadCloud className="w-3.5 h-3.5" />
               <span>Upload</span>
@@ -512,102 +755,420 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Datasets Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-[#070b1c] text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="py-3 px-6">Dataset Name</th>
-                <th className="py-3 px-6">Format</th>
-                <th className="py-3 px-6">Total Rows</th>
-                <th className="py-3 px-6">Columns</th>
-                <th className="py-3 px-6">File Size</th>
-                <th className="py-3 px-6">Status</th>
-                <th className="py-3 px-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filteredDatasets.length > 0 ? (
-                filteredDatasets.map((dataset) => (
-                  <tr key={dataset.id} className="hover:bg-cyan-500/5 transition-colors">
-                    <td className="py-4 px-6 font-semibold text-white">
-                      <div className="flex items-center space-x-2">
-                        <span>{dataset.name}</span>
+        {/* Notification Toast Alert */}
+        {notification && (
+          <div
+            className={`mx-6 mt-4 p-3 rounded-2xl flex items-center justify-between text-xs font-semibold animate-fade-in border ${
+              notification.type === 'success'
+                ? 'bg-emerald-950/80 text-emerald-200 border-emerald-500/40'
+                : 'bg-rose-950/80 text-rose-200 border-rose-500/40'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{notification.message}</span>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="p-1 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Error Alert with Retry */}
+        {error && (
+          <div className="mx-6 mt-4 p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/40 text-rose-300 flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={() => loadDatasets(true)}
+              className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Main Content: Loading Skeleton OR Table Layout OR Card Layout OR Empty State */}
+        <div className="p-6">
+          {isLoading ? (
+            /* Loading Skeleton State */
+            <div className="space-y-4 py-4 animate-pulse">
+              <div className="grid grid-cols-6 gap-4 pb-3 border-b border-slate-800">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-6 bg-slate-800/80 rounded-lg" />
+                ))}
+              </div>
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="grid grid-cols-6 gap-4 py-3 border-b border-slate-900/60">
+                  {[...Array(6)].map((_, j) => (
+                    <div key={j} className="h-5 bg-slate-800/40 rounded" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : filteredDatasets.length > 0 ? (
+            viewMode === 'table' ? (
+              /* ========================================================= */
+              /* LAYOUT 1: TABLE VIEW (Filename, Type, Size, Upload Date, Actions) */
+              /* ========================================================= */
+              <div className="overflow-x-auto -mx-6">
+                <table className="w-full text-left text-xs text-slate-300 border-collapse">
+                  <thead className="bg-[#070b1c] text-[11px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-800">
+                    <tr>
+                      <th className="py-3 px-6">Filename / Dataset</th>
+                      <th className="py-3 px-6">File Type</th>
+                      <th className="py-3 px-6">File Size</th>
+                      <th className="py-3 px-6">Upload Date</th>
+                      <th className="py-3 px-6">Rows / Columns</th>
+                      <th className="py-3 px-6">Status</th>
+                      <th className="py-3 px-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredDatasets.map((dataset) => {
+                      const isPreviewActive = previewingDatasetId === dataset.id;
+                      const formattedDate = formatDate(dataset.uploadedAt || dataset.createdAt);
+                      const relativeTime = formatRelativeTime(dataset.uploadedAt || dataset.createdAt);
+                      const fileNameDisplay = dataset.fileName || dataset.name || 'Untitled';
+                      const formatDisplay = (dataset.fileType || dataset.format || 'CSV').toUpperCase();
+
+                      return (
+                        <tr
+                          key={dataset.id}
+                          onClick={(e) => handleTogglePreview(dataset, e)}
+                          className={`hover:bg-cyan-500/5 transition-colors cursor-pointer group ${
+                            isPreviewActive ? 'bg-cyan-500/10' : ''
+                          }`}
+                        >
+                          {/* Filename & Name */}
+                          <td className="py-4 px-6 font-semibold text-white">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <FileSpreadsheet className="w-4 h-4" />
+                              </div>
+                              <div className="overflow-hidden">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-white group-hover:text-cyan-300 transition-colors truncate max-w-xs" title={fileNameDisplay}>
+                                    {fileNameDisplay}
+                                  </span>
+                                  {dataset.tags && dataset.tags.length > 0 && (
+                                    <span className="text-[10px] bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded border border-slate-700 shrink-0">
+                                      {dataset.tags[0]}
+                                    </span>
+                                  )}
+                                </div>
+                                {dataset.description && (
+                                  <p className="text-[11px] text-slate-400 font-normal truncate max-w-xs mt-0.5">
+                                    {dataset.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* File Type */}
+                          <td className="py-4 px-6">
+                            <span className="font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/30 uppercase tracking-wider">
+                              {formatDisplay}
+                            </span>
+                          </td>
+
+                          {/* File Size */}
+                          <td className="py-4 px-6 font-mono text-cyan-300 font-semibold whitespace-nowrap">
+                            {formatBytes(dataset.sizeBytes || dataset.fileSize || 0)}
+                          </td>
+
+                          {/* Upload Date */}
+                          <td className="py-4 px-6 text-slate-400 whitespace-nowrap">
+                            <div className="flex items-center space-x-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span title={formattedDate}>{formattedDate}</span>
+                            </div>
+                            {relativeTime && (
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                {relativeTime}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Rows / Columns */}
+                          <td className="py-4 px-6 whitespace-nowrap">
+                            <span className="font-medium text-white">
+                              {(dataset.rowCount || 0).toLocaleString()}
+                            </span>{' '}
+                            <span className="text-slate-500 text-[11px]">rows</span> •{' '}
+                            <span className="font-medium text-white">
+                              {dataset.columnCount || dataset.columns?.length || 0}
+                            </span>{' '}
+                            <span className="text-slate-500 text-[11px]">cols</span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-4 px-6 whitespace-nowrap">
+                            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span>{dataset.status || 'Ready'}</span>
+                            </span>
+                          </td>
+
+                          {/* Actions: Preview, Profile, Delete */}
+                          <td className="py-4 px-6 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end space-x-1.5">
+                              {/* Preview Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleTogglePreview(dataset, e)}
+                                className={`inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                  isPreviewActive
+                                    ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+                                    : 'bg-cyan-950/80 text-cyan-300 hover:bg-cyan-900 border border-cyan-500/30'
+                                }`}
+                                title="Preview Dataset Records"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>{isPreviewActive ? 'Close' : 'Preview'}</span>
+                              </button>
+
+                              {/* Details / Profile Link */}
+                              <Link
+                                to={`/dashboard/datasets/${dataset.id}`}
+                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#070b1c] text-cyan-300 hover:text-white hover:bg-cyan-950 border border-cyan-500/30 transition-all cursor-pointer"
+                                title="Dataset Details & Schema Profiling"
+                              >
+                                <BarChart3 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Profile</span>
+                              </Link>
+
+                              {/* Dataset Deletion Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteDataset(dataset.id, dataset.name || dataset.fileName, e)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title={`Delete dataset "${dataset.name || dataset.fileName}"`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* ========================================================= */
+              /* LAYOUT 2: CARD LAYOUT (Filename, Type, Size, Upload Date, Actions) */
+              /* ========================================================= */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filteredDatasets.map((dataset) => {
+                  const isPreviewActive = previewingDatasetId === dataset.id;
+                  const formattedDate = formatDate(dataset.uploadedAt || dataset.createdAt);
+                  const relativeTime = formatRelativeTime(dataset.uploadedAt || dataset.createdAt);
+                  const fileNameDisplay = dataset.fileName || dataset.name || 'Untitled';
+                  const formatDisplay = (dataset.fileType || dataset.format || 'CSV').toUpperCase();
+
+                  return (
+                    <div
+                      key={dataset.id}
+                      onClick={(e) => handleTogglePreview(dataset, e)}
+                      className={`bg-[#070b1c] rounded-3xl border transition-all duration-200 p-5 cursor-pointer relative flex flex-col justify-between group ${
+                        isPreviewActive
+                          ? 'border-cyan-400 ring-2 ring-cyan-500/40 shadow-[0_0_25px_rgba(6,182,212,0.3)] bg-[#0c1435]'
+                          : 'border-slate-800 hover:border-cyan-500/40 hover:shadow-[0_0_15px_rgba(6,182,212,0.15)]'
+                      }`}
+                    >
+                      <div>
+                        {/* Card Header: Icon, Type Badge & Status */}
+                        <div className="flex items-start justify-between mb-3.5">
+                          <div className="w-11 h-11 rounded-2xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <FileSpreadsheet className="w-5 h-5" />
+                          </div>
+
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#050814] text-cyan-300 border border-slate-700 uppercase tracking-wider">
+                              {formatDisplay}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                              {dataset.status || 'Ready'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Filename & Dataset Name */}
+                        <h4
+                          className="text-base font-bold text-white group-hover:text-cyan-300 transition-colors truncate"
+                          title={fileNameDisplay}
+                        >
+                          {fileNameDisplay}
+                        </h4>
+
+                        {/* Description */}
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                          {dataset.description || 'Ingested dataset ready for schema inspection & ML preprocessing.'}
+                        </p>
+
+                        {/* Tags */}
                         {dataset.tags && dataset.tags.length > 0 && (
-                          <span className="text-[10px] bg-slate-800 text-cyan-300 px-2 py-0.5 rounded-md border border-slate-700">
-                            {dataset.tags[0]}
-                          </span>
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {dataset.tags.slice(0, 3).map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#050814] text-slate-300 border border-slate-800"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 font-normal truncate max-w-xs mt-0.5">
-                        {dataset.description}
-                      </p>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-500/30">
-                        {dataset.format}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 font-medium text-white">
-                      {(dataset.rowCount || 0).toLocaleString()}
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="font-medium text-white">
-                        {dataset.columnCount || dataset.columns?.length || 0}
-                      </span>
-                      <span className="text-slate-500 text-[10px] ml-1">inferred</span>
-                    </td>
-                    <td className="py-4 px-6 font-mono text-[11px] text-slate-400">
-                      {formatBytes(dataset.sizeBytes)}
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        <span>{dataset.status || 'Ready'}</span>
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <Link
-                        to={`/dashboard/datasets/${dataset.id}`}
-                        className="inline-flex items-center space-x-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Profile</span>
-                      </Link>
-                    </td>
-                  </tr>
-                ))
-              ) : datasets.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="py-14 text-center">
-                    <div className="flex flex-col items-center justify-center space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-cyan-950/60 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shadow-lg">
-                        <UploadCloud className="w-6 h-6" />
+
+                      {/* Metadata Strip: File Size, Upload Date, Rows & Columns */}
+                      <div className="mt-5 pt-4 border-t border-slate-800 space-y-2.5 text-xs text-slate-400">
+                        {/* Rows & Size */}
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-white">
+                            {Number(dataset.rowCount || 0).toLocaleString()} rows • {dataset.columnCount || dataset.columns?.length || 0} cols
+                          </span>
+                          <span className="font-mono text-cyan-300 font-semibold flex items-center space-x-1">
+                            <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{formatBytes(dataset.sizeBytes || dataset.fileSize || 0)}</span>
+                          </span>
+                        </div>
+
+                        {/* Upload Date */}
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="flex items-center space-x-1 truncate max-w-[190px]">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span title={formattedDate}>{formattedDate}</span>
+                          </span>
+                          {relativeTime && (
+                            <span className="text-slate-500 font-medium shrink-0">
+                              {relativeTime}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Actions Footer */}
+                        <div
+                          className="pt-2 flex items-center justify-between border-t border-slate-800/60 gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center space-x-1.5">
+                            {/* Preview Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePreview(dataset, e)}
+                              className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                isPreviewActive
+                                  ? 'bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+                                  : 'bg-cyan-950/80 text-cyan-300 hover:bg-cyan-900 border border-cyan-500/30'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{isPreviewActive ? 'Close' : 'Preview'}</span>
+                            </button>
+
+                            {/* Profile Link */}
+                            <Link
+                              to={`/dashboard/datasets/${dataset.id}`}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#050814] text-cyan-300 hover:text-white hover:bg-cyan-950 border border-cyan-500/30 transition-all cursor-pointer"
+                              title="Dataset Details & Profiling"
+                            >
+                              <BarChart3 className="w-3.5 h-3.5" />
+                              <span>Profile</span>
+                            </Link>
+                          </div>
+
+                          {/* Delete Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteDataset(dataset.id, dataset.name || dataset.fileName, e)}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            title={`Delete dataset "${dataset.name || dataset.fileName}"`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-sm font-bold text-white">No datasets uploaded yet</p>
-                      <p className="text-xs text-slate-400 max-w-sm">
-                        All preloaded mock datasets have been removed. Upload a real CSV, TSV, or JSON file to start analyzing data.
-                      </p>
-                      <Link
-                        to="/dashboard/datasets/upload"
-                        className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(6,182,212,0.35)] transition-all"
-                      >
-                        <UploadCloud className="w-3.5 h-3.5" />
-                        <span>Upload Dataset</span>
-                      </Link>
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                <tr>
-                  <td colSpan="7" className="py-8 text-center text-slate-500">
-                    No datasets match your search query. Try clearing the filter.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  );
+                })}
+              </div>
+            )
+          ) : datasets.length === 0 ? (
+            /* Empty State: No Datasets Ingested */
+            <div className="py-14 text-center">
+              <div className="flex flex-col items-center justify-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-950/60 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shadow-lg">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-white">No datasets uploaded yet</h4>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  Upload a real CSV, TSV, or JSON file to start analyzing data, previewing schemas, and configuring transformations.
+                </p>
+                <Link
+                  to="/dashboard/datasets/upload"
+                  className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(6,182,212,0.35)] transition-all cursor-pointer"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Upload Dataset</span>
+                </Link>
+              </div>
+            </div>
+          ) : (
+            /* Filter Empty State */
+            <div className="py-10 text-center text-slate-400 text-xs">
+              <p>No datasets match search query "{searchFilter}".</p>
+              <button
+                onClick={() => {
+                  setSearchFilter('');
+                  setSelectedFormat('ALL');
+                }}
+                className="mt-2 text-cyan-400 hover:underline font-bold cursor-pointer"
+              >
+                Clear search & format filters
+              </button>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* INTERACTIVE DATASET PREVIEW UI (With Loading & Error States) */}
+      {/* ========================================================= */}
+      <div ref={previewSectionRef} className="pt-2">
+        {previewingDatasetId && (
+          <div className="space-y-3 animate-fade-in">
+            <DatasetPreviewTable
+              columns={previewData?.columns || []}
+              rows={previewData?.rows || []}
+              title={previewData?.fileName || previewData?.name || 'Dataset Preview'}
+              format={previewData?.format || 'CSV'}
+              totalRows={previewData?.totalRows}
+              fileSizeBytes={previewData?.fileSizeBytes}
+              isLoading={previewLoading}
+              error={previewError}
+              pagination={previewData?.pagination}
+              onPageChange={handlePreviewPageChange}
+              onPageSizeChange={handlePreviewSizeChange}
+              onOpenMapping={() => navigate(`/dashboard/datasets/mapping?datasetId=${previewingDatasetId}`)}
+              onRetry={() => {
+                const ds = datasets.find((d) => d.id === previewingDatasetId);
+                if (ds) handleTogglePreview(ds);
+              }}
+              onClose={() => {
+                setPreviewingDatasetId(null);
+                setPreviewData(null);
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

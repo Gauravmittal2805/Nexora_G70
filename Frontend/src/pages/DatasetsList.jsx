@@ -549,12 +549,12 @@ const DatasetsList = () => {
                       </div>
                     </div>
 
-                    {/* Dataset Name */}
+                    {/* Dataset Filename / Name */}
                     <h3
                       className="text-base font-bold text-white group-hover:text-cyan-300 transition-colors truncate"
-                      title={ds.name}
+                      title={ds.fileName || ds.name}
                     >
-                      {ds.name}
+                      {ds.fileName || ds.name}
                     </h3>
 
                     {/* Description */}
@@ -698,7 +698,7 @@ const DatasetsList = () => {
                               <FileSpreadsheet className="w-4 h-4" />
                             </div>
                             <div className="overflow-hidden">
-                              <div className="font-bold text-white truncate max-w-xs">{ds.name}</div>
+                              <div className="font-bold text-white truncate max-w-xs">{ds.fileName || ds.name}</div>
                               <div className="text-[11px] text-slate-400 truncate max-w-xs">{ds.description}</div>
                             </div>
                           </div>
