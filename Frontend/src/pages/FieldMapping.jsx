@@ -1,54 +1,144 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, Link, useNavigate, useParams } from 'react-router-dom';
+import { useSearchParams, useParams } from 'react-router-dom';
 import datasetService from '../services/datasetService';
-import DatasetPreviewTable from '../components/datasets/DatasetPreviewTable';
 import {
-  FileSpreadsheet,
-  CheckCircle2,
-  AlertTriangle,
+  Database,
+  Target,
   Layers,
-  Sparkles,
+  ArrowRight,
   Search,
   Plus,
   Trash2,
   RotateCcw,
   Eye,
   Link2,
-  Play,
   GripVertical,
-  Target,
-  ArrowRight,
-  Database,
-  X,
   Check,
-  ChevronRight,
+  CheckCircle2,
+  AlertTriangle,
   Save,
   Wand2,
-  SlidersHorizontal,
-  RefreshCw,
-  FolderOpen,
-  ArrowLeft,
+  Edit3,
+  Undo2,
+  Sparkles,
+  Scissors,
+  Type,
+  Hash,
+  ToggleLeft,
+  X,
+  Code,
+  FileSpreadsheet,
 } from 'lucide-react';
 
-const TRANSFORMATION_OPTIONS = [
-  { id: 'none', label: 'Pass-through (Raw)', description: 'Keep source value as-is' },
-  { id: 'trim', label: 'Trim Whitespace', description: 'Remove leading and trailing spaces' },
-  { id: 'uppercase', label: 'UPPERCASE', description: 'Convert all letters to uppercase' },
-  { id: 'lowercase', label: 'lowercase', description: 'Convert all letters to lowercase' },
-  { id: 'to_number', label: 'Cast to Number', description: 'Parse string into integer/float' },
-  { id: 'to_boolean', label: 'Cast to Boolean', description: 'Parse yes/no/true/false to boolean' },
-  { id: 'remove_empty', label: 'Remove Empty Cells', description: 'Strip null and empty string values' },
+// ─── Available Transformation Types ──────────────────────────────────────────
+const TRANSFORMATION_TYPES = [
+  {
+    id: 'none',
+    label: 'None (Pass-through)',
+    shortLabel: 'RAW',
+    description: 'Keep value unchanged without alterations',
+    icon: ToggleLeft,
+    badgeStyle: 'bg-slate-900 text-slate-300 border-slate-700',
+    color: 'slate',
+  },
+  {
+    id: 'trim',
+    label: 'Trim Whitespace',
+    shortLabel: 'TRIM',
+    description: 'Remove leading and trailing whitespace characters',
+    icon: Scissors,
+    badgeStyle: 'bg-cyan-950 text-cyan-300 border-cyan-500/40',
+    color: 'cyan',
+  },
+  {
+    id: 'uppercase',
+    label: 'UPPERCASE',
+    shortLabel: 'UPPER',
+    description: 'Convert string characters to uppercase letters',
+    icon: Type,
+    badgeStyle: 'bg-violet-950 text-violet-300 border-violet-500/40',
+    color: 'violet',
+  },
+  {
+    id: 'lowercase',
+    label: 'lowercase',
+    shortLabel: 'LOWER',
+    description: 'Convert string characters to lowercase letters',
+    icon: Type,
+    badgeStyle: 'bg-pink-950 text-pink-300 border-pink-500/40',
+    color: 'pink',
+  },
+  {
+    id: 'to_number',
+    label: 'String to Number',
+    shortLabel: 'NUM',
+    description: 'Cast numeric text to integer or floating-point number',
+    icon: Hash,
+    badgeStyle: 'bg-amber-950 text-amber-300 border-amber-500/40',
+    color: 'amber',
+  },
+  {
+    id: 'to_boolean',
+    label: 'Cast to Boolean',
+    shortLabel: 'BOOL',
+    description: 'Parse yes/no/true/false/1/0 into boolean values',
+    icon: Check,
+    badgeStyle: 'bg-emerald-950 text-emerald-300 border-emerald-500/40',
+    color: 'emerald',
+  },
+  {
+    id: 'remove_empty',
+    label: 'Remove Empty Values',
+    shortLabel: 'NON-EMPTY',
+    description: 'Nullify empty strings and whitespace-only records',
+    icon: X,
+    badgeStyle: 'bg-rose-950 text-rose-300 border-rose-500/40',
+    color: 'rose',
+  },
 ];
+
+// Helper to execute transformation on a single scalar value for live preview
+const applyTransformation = (val, type) => {
+  if (val === null || val === undefined) {
+    if (type === 'remove_empty') return null;
+    return val;
+  }
+  switch (type) {
+    case 'trim':
+      return typeof val === 'string' ? val.trim() : String(val).trim();
+    case 'uppercase':
+      return typeof val === 'string' ? val.toUpperCase() : String(val).toUpperCase();
+    case 'lowercase':
+      return typeof val === 'string' ? val.toLowerCase() : String(val).toLowerCase();
+    case 'to_number': {
+      if (val === '') return null;
+      const cleaned = String(val).replace(/[^0-9.-]/g, '');
+      const n = Number(cleaned);
+      return isNaN(n) ? null : n;
+    }
+    case 'to_boolean': {
+      const s = String(val).trim().toLowerCase();
+      if (['true', '1', 'yes', 'y'].includes(s)) return true;
+      if (['false', '0', 'no', 'n'].includes(s)) return false;
+      return Boolean(val);
+    }
+    case 'remove_empty':
+      if (typeof val === 'string' && val.trim() === '') return null;
+      return val;
+    case 'none':
+    default:
+      return val;
+  }
+};
 
 const FieldMapping = () => {
   const { id: routeDatasetId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
-  // Active Tab: 'workspace' | 'transformations' | 'preview' | 'engine'
+  // Active Tab: 'workspace' | 'transformations' | 'preview' | 'config'
   const [activeTab, setActiveTab] = useState('workspace');
 
-  // Catalog & active dataset state
+  // Datasets catalog state
   const [datasets, setDatasets] = useState([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState(
     routeDatasetId || searchParams.get('datasetId') || ''
@@ -56,26 +146,30 @@ const FieldMapping = () => {
   const [currentDataset, setCurrentDataset] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Search in source fields
+  // Search filter in source column list
   const [sourceSearch, setSourceSearch] = useState('');
 
-  // Destination fields list: [{ id, name, type, required }]
+  // ─── Core Frontend State: Transformation & Mapping Configurations ────────
+  // Array of: { id, sourceField, destField, transformation, isRenamed, isRemoved, customParams }
+  const [mappingConfigs, setMappingConfigs] = useState([]);
+
+  // Destination fields registry: [{ id, name, type }]
   const [destinationFields, setDestinationFields] = useState([]);
   const [newDestFieldName, setNewDestFieldName] = useState('');
-  const [newDestFieldType, setNewDestFieldType] = useState('String');
 
-  // Active Connections: [{ id, sourceField, destField, transformation }]
-  const [connections, setConnections] = useState([]);
+  // Quick Map selection state (Source and Destination Column Selection)
+  const [quickSourceCol, setQuickSourceCol] = useState('');
+  const [quickDestCol, setQuickDestCol] = useState('');
+  const [quickTransformation, setQuickTransformation] = useState('none');
 
-  // Selection states for click-to-connect workflow
+  // Interactive selection for click-to-connect workflow
   const [selectedSourceCol, setSelectedSourceCol] = useState(null);
   const [selectedDestField, setSelectedDestField] = useState(null);
 
-  // Live Output Preview state
-  const [previewRows, setPreviewRows] = useState([]);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // Inline rename editing state: { [configId]: string }
+  const [editingRename, setEditingRename] = useState({});
 
-  // Notifications
+  // Notification toast
   const [notification, setNotification] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -84,18 +178,27 @@ const FieldMapping = () => {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Load dataset mapping and initialize connections/destinations
+  // ─── Initialize State From Loaded Dataset ─────────────────────────────────
   const loadDatasetState = useCallback((dataset) => {
     if (!dataset) return;
 
     const sourceCols = dataset.columns || [];
-
-    // Check if dataset has saved connections in mapping or storage
-    const savedConnections = dataset.mapping?.connections || [];
-    const savedDestinations = dataset.mapping?.destinations || [];
+    const savedMapping = dataset.mapping || {};
+    const savedConnections = savedMapping.connections || [];
+    const savedDestinations = savedMapping.destinations || [];
 
     if (savedConnections.length > 0) {
-      setConnections(savedConnections);
+      // Reconstruct mapping configurations from saved state
+      const initialConfigs = savedConnections.map((conn, idx) => ({
+        id: conn.id || `map-${conn.sourceField}-${conn.destField}-${idx}`,
+        sourceField: conn.sourceField,
+        destField: conn.destField,
+        transformation: conn.transformation || 'none',
+        isRenamed: conn.sourceField !== conn.destField,
+        isRemoved: Boolean(conn.isRemoved),
+      }));
+
+      setMappingConfigs(initialConfigs);
       setDestinationFields(
         savedDestinations.length > 0
           ? savedDestinations
@@ -106,27 +209,33 @@ const FieldMapping = () => {
             }))
       );
     } else {
-      // Initialize with destinations matching source columns
-      const initialDestinations = sourceCols.map((c) => ({
+      // Initialize 1-to-1 default mappings for all source columns
+      const initialConfigs = sourceCols.map((c) => ({
+        id: `map-${c.name}-${c.name}`,
+        sourceField: c.name,
+        destField: c.name,
+        transformation: 'none',
+        isRenamed: false,
+        isRemoved: false,
+      }));
+
+      const initialDests = sourceCols.map((c) => ({
         id: `dest-${c.name}`,
         name: c.name,
         type: c.type || 'String',
       }));
 
-      // Heuristically map exact name matches by default
-      const initialConnections = sourceCols.map((c) => ({
-        id: `conn-${c.name}-${c.name}`,
-        sourceField: c.name,
-        destField: c.name,
-        transformation: 'none',
-      }));
+      setMappingConfigs(initialConfigs);
+      setDestinationFields(initialDests);
+    }
 
-      setDestinationFields(initialDestinations);
-      setConnections(initialConnections);
+    if (sourceCols.length > 0) {
+      setQuickSourceCol(sourceCols[0].name);
+      setQuickDestCol(sourceCols[0].name);
     }
   }, []);
 
-  // Fetch datasets catalog
+  // ─── Fetch Datasets on Mount ──────────────────────────────────────────────
   useEffect(() => {
     let active = true;
     datasetService
@@ -158,7 +267,7 @@ const FieldMapping = () => {
     };
   }, [routeDatasetId, searchParams, loadDatasetState]);
 
-  // Dataset switcher
+  // Handle dataset change
   const handleSelectDataset = (datasetId) => {
     setSelectedDatasetId(datasetId);
     setSearchParams({ datasetId });
@@ -171,104 +280,176 @@ const FieldMapping = () => {
     }
   };
 
-  // Source columns
+  // ─── Computed Lookups and Filters ─────────────────────────────────────────
   const sourceColumns = useMemo(() => {
     return currentDataset?.columns || [];
   }, [currentDataset]);
 
-  // Filtered source columns by search
   const filteredSourceColumns = useMemo(() => {
     if (!sourceSearch.trim()) return sourceColumns;
     const q = sourceSearch.toLowerCase().trim();
     return sourceColumns.filter((col) => col.name.toLowerCase().includes(q));
   }, [sourceColumns, sourceSearch]);
 
-  // Source column mapping lookup: { [sourceColName]: connectionObj }
-  const sourceToConnectionMap = useMemo(() => {
+  // Active mappings (excluding removed columns)
+  const activeMappings = useMemo(() => {
+    return mappingConfigs.filter((c) => !c.isRemoved);
+  }, [mappingConfigs]);
+
+  // Removed/excluded mappings
+  const removedMappings = useMemo(() => {
+    return mappingConfigs.filter((c) => c.isRemoved);
+  }, [mappingConfigs]);
+
+  // Mapping lookup maps
+  const sourceToConfigMap = useMemo(() => {
     const map = {};
-    connections.forEach((conn) => {
-      map[conn.sourceField] = conn;
+    activeMappings.forEach((cfg) => {
+      map[cfg.sourceField] = cfg;
     });
     return map;
-  }, [connections]);
+  }, [activeMappings]);
 
-  // Destination field mapping lookup: { [destFieldName]: connectionObj }
-  const destToConnectionMap = useMemo(() => {
+  const destToConfigMap = useMemo(() => {
     const map = {};
-    connections.forEach((conn) => {
-      map[conn.destField] = conn;
+    activeMappings.forEach((cfg) => {
+      map[cfg.destField] = cfg;
     });
     return map;
-  }, [connections]);
+  }, [activeMappings]);
 
-  // Stats
+  // Stats counters
   const totalSourceCount = sourceColumns.length;
-  const mappedSourceCount = useMemo(() => {
-    return Object.keys(sourceToConnectionMap).length;
-  }, [sourceToConnectionMap]);
-  const unmappedSourceCount = Math.max(0, totalSourceCount - mappedSourceCount);
-
-  const totalDestCount = destinationFields.length;
-  const connectedDestCount = useMemo(() => {
-    return Object.keys(destToConnectionMap).length;
-  }, [destToConnectionMap]);
-
-  const transformationsCount = useMemo(() => {
-    return connections.filter((c) => c.transformation && c.transformation !== 'none').length;
-  }, [connections]);
-
-  // Connect source and destination
-  const createConnection = useCallback(
-    (sourceName, destName) => {
-      if (!sourceName || !destName) return;
-
-      setConnections((prev) => {
-        // Remove existing connections for this source or this destination
-        const filtered = prev.filter(
-          (c) => c.sourceField !== sourceName && c.destField !== destName
-        );
-
-        return [
-          ...filtered,
-          {
-            id: `conn-${sourceName}-${destName}-${Date.now()}`,
-            sourceField: sourceName,
-            destField: destName,
-            transformation: 'none',
-          },
-        ];
-      });
-
-      setSelectedSourceCol(null);
-      setSelectedDestField(null);
-      showNotification('success', `Connected "${sourceName}" → "${destName}".`);
-    },
-    []
+  const mappedSourceCount = activeMappings.length;
+  const unmappedSourceCount = Math.max(0, totalSourceCount - mappedSourceCount - removedMappings.length);
+  const renamedCount = useMemo(() => activeMappings.filter((m) => m.isRenamed).length, [activeMappings]);
+  const transformedCount = useMemo(
+    () => activeMappings.filter((m) => m.transformation && m.transformation !== 'none').length,
+    [activeMappings]
   );
 
-  // Click on a source column
+  // ─── State Modifiers & Actions ────────────────────────────────────────────
+
+  // 1. Add or Update Mapping via Selection
+  const handleAddOrUpdateMapping = (sourceName, destName, transformation = 'none') => {
+    if (!sourceName || !destName) return;
+
+    setMappingConfigs((prev) => {
+      // Remove previous mapping using this source or this destination
+      const filtered = prev.filter(
+        (m) => m.sourceField !== sourceName && m.destField !== destName
+      );
+
+      return [
+        ...filtered,
+        {
+          id: `map-${sourceName}-${destName}-${Date.now()}`,
+          sourceField: sourceName,
+          destField: destName,
+          transformation: transformation || 'none',
+          isRenamed: sourceName !== destName,
+          isRemoved: false,
+        },
+      ];
+    });
+
+    // Ensure destination field exists in registry
+    setDestinationFields((prev) => {
+      if (prev.some((d) => d.name.toLowerCase() === destName.toLowerCase())) return prev;
+      return [...prev, { id: `dest-${Date.now()}`, name: destName, type: 'String' }];
+    });
+
+    setSelectedSourceCol(null);
+    setSelectedDestField(null);
+    showNotification('success', `Mapped "${sourceName}" → "${destName}".`);
+  };
+
+  // 2. Rename Column
+  const handleRenameColumn = (configId, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+
+    setMappingConfigs((prev) =>
+      prev.map((cfg) => {
+        if (cfg.id !== configId) return cfg;
+        return {
+          ...cfg,
+          destField: trimmed,
+          isRenamed: cfg.sourceField !== trimmed,
+        };
+      })
+    );
+
+    // Update destination field registry name if matching
+    setDestinationFields((prev) => {
+      const targetCfg = mappingConfigs.find((c) => c.id === configId);
+      if (!targetCfg) return prev;
+      return prev.map((d) => (d.name === targetCfg.destField ? { ...d, name: trimmed } : d));
+    });
+
+    // Clear editing state
+    setEditingRename((prev) => {
+      const next = { ...prev };
+      delete next[configId];
+      return next;
+    });
+
+    showNotification('success', `Column destination renamed to "${trimmed}".`);
+  };
+
+  // 3. Remove / Exclude Column from output
+  const handleRemoveColumn = (configId) => {
+    setMappingConfigs((prev) =>
+      prev.map((cfg) => (cfg.id === configId ? { ...cfg, isRemoved: true } : cfg))
+    );
+    showNotification('warning', 'Column marked as removed/excluded from output.');
+  };
+
+  // 4. Restore a Removed Column
+  const handleRestoreColumn = (configId) => {
+    setMappingConfigs((prev) =>
+      prev.map((cfg) => (cfg.id === configId ? { ...cfg, isRemoved: false } : cfg))
+    );
+    showNotification('success', 'Column restored to mapping pipeline.');
+  };
+
+  // 5. Delete Mapping Connection permanently
+  const handleDeleteConnection = (configId) => {
+    setMappingConfigs((prev) => prev.filter((cfg) => cfg.id !== configId));
+    showNotification('info', 'Mapping connection removed.');
+  };
+
+  // 6. Update Transformation Type
+  const handleUpdateTransformation = (configId, transformation) => {
+    setMappingConfigs((prev) =>
+      prev.map((cfg) => (cfg.id === configId ? { ...cfg, transformation } : cfg))
+    );
+    const selectedTrans = TRANSFORMATION_TYPES.find((t) => t.id === transformation);
+    showNotification('success', `Applied "${selectedTrans?.label || transformation}".`);
+  };
+
+  // 7. Click-to-Connect source column
   const handleSourceColumnClick = (colName) => {
     if (selectedDestField) {
-      // Connect with already selected destination
-      createConnection(colName, selectedDestField);
+      handleAddOrUpdateMapping(colName, selectedDestField, 'none');
     } else {
-      // Toggle selection
       setSelectedSourceCol((prev) => (prev === colName ? null : colName));
+      setQuickSourceCol(colName);
+      setQuickDestCol(colName);
     }
   };
 
-  // Click on a destination field
+  // 8. Click-to-Connect destination field
   const handleDestFieldClick = (destName) => {
     if (selectedSourceCol) {
-      // Connect with already selected source
-      createConnection(selectedSourceCol, destName);
+      handleAddOrUpdateMapping(selectedSourceCol, destName, 'none');
     } else {
-      // Toggle selection
       setSelectedDestField((prev) => (prev === destName ? null : destName));
+      setQuickDestCol(destName);
     }
   };
 
-  // Add new destination field
+  // 9. Add new Destination Field to list
   const handleAddDestinationField = (e) => {
     if (e) e.preventDefault();
     const trimmed = newDestFieldName.trim();
@@ -282,74 +463,47 @@ const FieldMapping = () => {
     const newField = {
       id: `dest-${Date.now()}`,
       name: trimmed,
-      type: newDestFieldType,
+      type: 'String',
     };
 
     setDestinationFields((prev) => [...prev, newField]);
     setNewDestFieldName('');
 
-    // If a source field was selected, connect automatically
     if (selectedSourceCol) {
-      createConnection(selectedSourceCol, trimmed);
+      handleAddOrUpdateMapping(selectedSourceCol, trimmed, 'none');
     } else {
       showNotification('success', `Destination field "${trimmed}" added.`);
     }
   };
 
-  // Remove a destination field
-  const handleRemoveDestinationField = (destName) => {
-    setDestinationFields((prev) => prev.filter((f) => f.name !== destName));
-    setConnections((prev) => prev.filter((c) => c.destField !== destName));
-    if (selectedDestField === destName) setSelectedDestField(null);
-    showNotification('info', `Removed destination field "${destName}".`);
-  };
-
-  // Remove a connection
-  const handleRemoveConnection = (connId) => {
-    setConnections((prev) => prev.filter((c) => c.id !== connId));
-    showNotification('info', 'Connection removed.');
-  };
-
-  // Update transformation for a connection
-  const handleUpdateTransformation = (connId, transformation) => {
-    setConnections((prev) =>
-      prev.map((c) => (c.id === connId ? { ...c, transformation } : c))
-    );
-  };
-
-  // Auto-map all unmapped fields with same name or create destinations
+  // 10. Auto-Map All Remaining Source Fields
   const handleAutoMapAll = () => {
+    const existingSources = new Set(activeMappings.map((m) => m.sourceField));
+    const newConfigs = [...mappingConfigs];
     const newDests = [...destinationFields];
-    const newConns = [...connections];
 
     sourceColumns.forEach((col) => {
-      // If not already mapped
-      if (!newConns.some((c) => c.sourceField === col.name)) {
-        let matchingDest = newDests.find((d) => d.name.toLowerCase() === col.name.toLowerCase());
-        if (!matchingDest) {
-          matchingDest = {
-            id: `dest-${col.name}`,
-            name: col.name,
-            type: col.type || 'String',
-          };
-          newDests.push(matchingDest);
+      if (!existingSources.has(col.name)) {
+        if (!newDests.some((d) => d.name.toLowerCase() === col.name.toLowerCase())) {
+          newDests.push({ id: `dest-${col.name}`, name: col.name, type: col.type || 'String' });
         }
-
-        newConns.push({
-          id: `conn-${col.name}-${matchingDest.name}`,
+        newConfigs.push({
+          id: `map-${col.name}-${col.name}-${Date.now()}`,
           sourceField: col.name,
-          destField: matchingDest.name,
+          destField: col.name,
           transformation: 'none',
+          isRenamed: false,
+          isRemoved: false,
         });
       }
     });
 
     setDestinationFields(newDests);
-    setConnections(newConns);
-    showNotification('success', 'Auto-mapped all source fields to destinations.');
+    setMappingConfigs(newConfigs);
+    showNotification('success', 'Auto-mapped all unmapped source columns.');
   };
 
-  // Discard changes & restore from dataset initial state
+  // 11. Discard Changes & Reset to initial dataset state
   const handleDiscardChanges = () => {
     if (currentDataset) {
       loadDatasetState(currentDataset);
@@ -359,130 +513,78 @@ const FieldMapping = () => {
     }
   };
 
-  // Clear all connections and destinations
+  // 12. Clear All Mappings
   const handleClearAll = () => {
-    setConnections([]);
-    setDestinationFields([]);
+    setMappingConfigs([]);
     setSelectedSourceCol(null);
     setSelectedDestField(null);
-    showNotification('warning', 'Cleared all connections and destination fields.');
+    showNotification('warning', 'Cleared all field mappings.');
   };
 
-  // Save pipeline configuration
+  // 13. Batch apply transformation to all active mappings
+  const handleBatchApplyTransformation = (transformationType) => {
+    setMappingConfigs((prev) =>
+      prev.map((cfg) => ({ ...cfg, transformation: transformationType }))
+    );
+    const transObj = TRANSFORMATION_TYPES.find((t) => t.id === transformationType);
+    showNotification('success', `Batch applied "${transObj?.label}" to all mapped columns.`);
+  };
+
+  // 14. Save Pipeline Configuration to Backend / Service
   const handleSavePipeline = async () => {
     if (!currentDataset) return;
     setIsSaving(true);
 
     try {
-      // Build standard mapping object for backward compatibility
-      const targetCol = connections.find((c) =>
-        /target|label|churn|price|alert/i.test(c.destField)
-      )?.sourceField || '';
-
-      const idCol = connections.find((c) =>
-        /id$|^id|_id$/i.test(c.destField)
-      )?.sourceField || '';
-
-      const numericalCols = connections
-        .filter((c) => {
-          const dest = destinationFields.find((d) => d.name === c.destField);
-          return (
-            dest?.type === 'Integer' ||
-            dest?.type === 'Float' ||
-            dest?.type === 'number'
-          );
-        })
-        .map((c) => c.sourceField);
-
-      const categoricalCols = connections
-        .filter((c) => !numericalCols.includes(c.sourceField) && c.sourceField !== targetCol && c.sourceField !== idCol)
-        .map((c) => c.sourceField);
-
       const payload = {
-        target: targetCol,
-        id: idCol,
-        numerical: numericalCols,
-        categorical: categoricalCols,
-        datetime: [],
-        ignored: sourceColumns
-          .filter((c) => !connections.some((conn) => conn.sourceField === c.name))
-          .map((c) => c.name),
-        connections,
+        connections: activeMappings.map((m) => ({
+          id: m.id,
+          sourceField: m.sourceField,
+          destField: m.destField,
+          transformation: m.transformation,
+          isRenamed: m.isRenamed,
+          isRemoved: false,
+        })),
         destinations: destinationFields,
+        removedColumns: removedMappings.map((m) => m.sourceField),
+        transformationConfigs: mappingConfigs,
         updatedAt: new Date().toISOString(),
       };
 
       await datasetService.saveFieldMapping(currentDataset.id, payload);
-      showNotification('success', `Pipeline saved successfully for "${currentDataset.name}".`);
+      showNotification('success', `Pipeline configurations saved for "${currentDataset.name}".`);
     } catch (err) {
-      console.error('Error saving pipeline:', err);
-      showNotification('error', `Save failed: ${err.message}`);
+      console.error('Save error:', err);
+      showNotification('error', `Failed to save: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Compute live preview rows
-  const generatePreview = useCallback(() => {
-    if (!currentDataset) return;
-    setPreviewLoading(true);
-
+  // Live Output Preview computed synchronously via useMemo
+  const previewRows = useMemo(() => {
+    if (!currentDataset) return [];
     const sampleRows = currentDataset.sampleRows || currentDataset.previewData || [];
-
-    setTimeout(() => {
-      const transformed = sampleRows.map((row) => {
-        const outputRow = {};
-
-        connections.forEach((conn) => {
-          let val = row[conn.sourceField];
-
-          // Apply transformation
-          if (conn.transformation === 'trim' && typeof val === 'string') {
-            val = val.trim();
-          } else if (conn.transformation === 'uppercase' && typeof val === 'string') {
-            val = val.toUpperCase();
-          } else if (conn.transformation === 'lowercase' && typeof val === 'string') {
-            val = val.toLowerCase();
-          } else if (conn.transformation === 'to_number') {
-            val = Number(val) || 0;
-          } else if (conn.transformation === 'to_boolean') {
-            val = Boolean(val);
-          }
-
-          outputRow[conn.destField] = val !== undefined ? val : null;
-        });
-
-        return outputRow;
+    return sampleRows.map((row) => {
+      const out = {};
+      activeMappings.forEach((cfg) => {
+        const rawVal = row[cfg.sourceField];
+        const val = applyTransformation(rawVal, cfg.transformation);
+        out[cfg.destField] = val !== undefined ? val : null;
       });
+      return out;
+    });
+  }, [currentDataset, activeMappings]);
 
-      setPreviewRows(transformed);
-      setPreviewLoading(false);
-    }, 150);
-  }, [currentDataset, connections]);
-
-  // Load preview when tab is preview
-  useEffect(() => {
-    if (activeTab === 'preview') {
-      generatePreview();
-    }
-  }, [activeTab, generatePreview]);
-
+  // Loading state
   if (isLoading) {
     return (
       <div className="p-16 text-center text-slate-400 space-y-4 bg-[#0c122b]/90 border border-cyan-500/20 min-h-[500px] flex flex-col items-center justify-center rounded-3xl shadow-2xl">
         <div className="w-10 h-10 border-3 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm font-semibold text-slate-300">Loading Pipeline Workspace...</p>
+        <p className="text-sm font-semibold text-slate-300">Loading Field Mapping Studio...</p>
       </div>
     );
   }
-
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in text-slate-100">
@@ -505,13 +607,12 @@ const FieldMapping = () => {
         </div>
       )}
 
-      {/* TOP HEADER & METADATA BANNER (Dashboard Cosmic Theme) */}
+      {/* TOP HEADER & DATASET STATUS BANNER */}
       <div className="relative overflow-hidden rounded-3xl bg-[#0c122b]/95 border border-cyan-500/25 p-6 sm:p-7 shadow-2xl backdrop-blur-2xl">
         <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-[80px] pointer-events-none" />
         <div className="absolute -left-20 -top-20 w-80 h-80 bg-purple-500/10 rounded-full blur-[80px] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          {/* Left: Dataset Identity & Metadata */}
           <div className="flex items-start sm:items-center space-x-4">
             <div className="w-13 h-13 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
               <FileSpreadsheet className="w-7 h-7" />
@@ -520,14 +621,11 @@ const FieldMapping = () => {
             <div>
               <div className="flex items-center space-x-2.5 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  {currentDataset?.name || 'streamweaver_demo_50_records.csv'}
+                  {currentDataset?.name || 'Dataset'}
                 </h1>
                 <span className="text-slate-500">•</span>
-                <span className="text-xs text-slate-300 font-medium">
-                  {formatFileSize(currentDataset?.fileSize || currentDataset?.sizeBytes || 3116)}
-                </span>
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 uppercase tracking-wide">
-                  {currentDataset?.format || currentDataset?.fileType || 'CSV'}
+                  {currentDataset?.format || 'CSV'}
                 </span>
 
                 {/* Dataset Switcher Dropdown */}
@@ -548,41 +646,43 @@ const FieldMapping = () => {
                 )}
               </div>
 
-              {/* Stats Row */}
+              {/* Status Stats Badges */}
               <div className="flex items-center space-x-4 sm:space-x-6 text-xs text-slate-300 mt-2.5 flex-wrap gap-y-2 font-medium">
                 <div className="flex items-center space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>
                     <strong className="text-white">{mappedSourceCount}</strong> of{' '}
-                    <strong className="text-white">{totalSourceCount}</strong> fields mapped
+                    <strong className="text-white">{totalSourceCount}</strong> mapped
                   </span>
                 </div>
 
                 <div className="flex items-center space-x-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Edit3 className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
-                    <strong className="text-white">{unmappedSourceCount}</strong> unmapped
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-1.5">
-                  <Layers className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>
-                    <strong className="text-white">{totalDestCount}</strong> destinations
+                    <strong className="text-white">{renamedCount}</strong> renamed
                   </span>
                 </div>
 
                 <div className="flex items-center space-x-1.5">
                   <Wand2 className="w-4 h-4 text-purple-400 shrink-0" />
                   <span>
-                    <strong className="text-white">{transformationsCount}</strong> transformations configured
+                    <strong className="text-white">{transformedCount}</strong> transformations
                   </span>
                 </div>
+
+                {removedMappings.length > 0 && (
+                  <div className="flex items-center space-x-1.5">
+                    <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>
+                      <strong className="text-white">{removedMappings.length}</strong> removed
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Right: Primary Pipeline Actions */}
+          {/* Header Action Buttons */}
           <div className="flex items-center space-x-3 shrink-0 self-start lg:self-auto">
             <button
               onClick={handleSavePipeline}
@@ -597,14 +697,93 @@ const FieldMapping = () => {
               onClick={() => setActiveTab('preview')}
               className="px-4 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[#0d1636] hover:bg-[#121e4a] text-slate-200 border border-cyan-500/30 shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
             >
-              <span>Continue to Processing</span>
-              <ArrowRight className="w-4 h-4 text-cyan-400" />
+              <Eye className="w-4 h-4 text-cyan-400" />
+              <span>Preview Output</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* TAB NAVIGATION BAR (Dashboard Pill Style) */}
+      {/* QUICK MAP / COLUMN SELECTION BAR (Source & Destination Selection + Transform Type) */}
+      <div className="rounded-2xl bg-[#0a0f24] border border-cyan-500/30 p-4 shadow-xl backdrop-blur-xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2 text-xs font-bold text-cyan-300 uppercase tracking-wider shrink-0">
+            <Link2 className="w-4 h-4 text-cyan-400" />
+            <span>Map Column Selection:</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 flex-1">
+            {/* 1. Source Column Select */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                1. Source Column
+              </label>
+              <select
+                value={quickSourceCol}
+                onChange={(e) => {
+                  setQuickSourceCol(e.target.value);
+                  setQuickDestCol(e.target.value);
+                }}
+                className="w-full bg-[#070b1c] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-cyan-400 cursor-pointer"
+              >
+                <option value="" disabled>Select Source Column...</option>
+                {sourceColumns.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name} ({col.type || 'String'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Destination Column Input / Select (Rename Column Option) */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                2. Destination Column (Rename)
+              </label>
+              <input
+                type="text"
+                value={quickDestCol}
+                onChange={(e) => setQuickDestCol(e.target.value)}
+                placeholder="Target Column Name..."
+                className="w-full bg-[#070b1c] border border-slate-700 text-cyan-300 placeholder-slate-500 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            {/* 3. Transformation Type Select */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                3. Transformation Type
+              </label>
+              <select
+                value={quickTransformation}
+                onChange={(e) => setQuickTransformation(e.target.value)}
+                className="w-full bg-[#070b1c] border border-slate-700 text-purple-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-purple-400 cursor-pointer"
+              >
+                {TRANSFORMATION_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. Map Column Button */}
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => handleAddOrUpdateMapping(quickSourceCol, quickDestCol, quickTransformation)}
+                disabled={!quickSourceCol || !quickDestCol.trim()}
+                className="w-full py-2 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 shadow-md transition-all flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Map Column</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NAVIGATION TABS */}
       <div className="flex items-center justify-between border-b border-cyan-500/15 pb-2 px-1 flex-wrap gap-y-2">
         <div className="flex items-center space-x-2 overflow-x-auto">
           <button
@@ -618,7 +797,7 @@ const FieldMapping = () => {
             <Layers className="w-3.5 h-3.5" />
             <span>Field Mapping Workspace</span>
             <span className="w-5 h-5 rounded-full bg-[#070b1c] text-cyan-400 text-[10px] font-extrabold flex items-center justify-center border border-cyan-500/30">
-              {connections.length}
+              {activeMappings.length}
             </span>
           </button>
 
@@ -630,11 +809,11 @@ const FieldMapping = () => {
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <Wand2 className="w-3.5 h-3.5 text-purple-400" />
             <span>Transformation Builder</span>
-            {transformationsCount > 0 && (
+            {transformedCount > 0 && (
               <span className="w-5 h-5 rounded-full bg-purple-900 text-purple-300 text-[10px] font-extrabold flex items-center justify-center">
-                {transformationsCount}
+                {transformedCount}
               </span>
             )}
           </button>
@@ -652,41 +831,35 @@ const FieldMapping = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('engine')}
+            onClick={() => setActiveTab('config')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-              activeTab === 'engine'
+              activeTab === 'config'
                 ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Play className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Stage 5: Processing Engine</span>
+            <Code className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Pipeline State Config</span>
           </button>
         </div>
 
-        <span className="text-xs font-semibold text-slate-500">Nexora Pipeline Engine</span>
+        <span className="text-xs font-semibold text-slate-500">Nexora No-Code ETL</span>
       </div>
 
-      {/* TAB CONTENT: 1. FIELD MAPPING WORKSPACE (3-COLUMN LAYOUT) */}
+      {/* ─── TAB 1: FIELD MAPPING WORKSPACE (3-COLUMN VISUAL LAYOUT) ─────────── */}
       {activeTab === 'workspace' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* ========================================================================= */}
           {/* COLUMN 1: SOURCE COLUMNS (lg:col-span-3) */}
-          {/* ========================================================================= */}
           <div className="lg:col-span-3 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-                  <Database className="w-4 h-4" />
-                </div>
+              <div className="flex items-center space-x-2">
+                <Database className="w-4 h-4 text-cyan-400" />
                 <h2 className="text-xs font-black uppercase tracking-wider text-white">
                   SOURCE COLUMNS
                 </h2>
               </div>
-
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
-                {mappedSourceCount} of {totalSourceCount} mapped
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                {mappedSourceCount}/{totalSourceCount}
               </span>
             </div>
 
@@ -698,19 +871,21 @@ const FieldMapping = () => {
                 value={sourceSearch}
                 onChange={(e) => setSourceSearch(e.target.value)}
                 placeholder="Search source fields..."
-                className="w-full bg-[#070b1c] hover:bg-[#0a0f26] focus:bg-[#0d1538] text-xs text-white placeholder-slate-500 pl-8 pr-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/30 font-medium transition-all"
+                className="w-full bg-[#070b1c] text-xs text-white placeholder-slate-500 pl-8 pr-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 font-medium"
               />
             </div>
 
-            {/* Source Columns List */}
-            <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+            {/* Source Column Cards List */}
+            <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
               {filteredSourceColumns.length === 0 ? (
                 <div className="py-8 text-center text-xs text-slate-500 font-medium">
                   No matching columns found
                 </div>
               ) : (
                 filteredSourceColumns.map((col) => {
-                  const isMapped = Boolean(sourceToConnectionMap[col.name]);
+                  const activeMapping = sourceToConfigMap[col.name];
+                  const isMapped = Boolean(activeMapping);
+                  const isRemoved = removedMappings.some((m) => m.sourceField === col.name);
                   const isSelected = selectedSourceCol === col.name;
 
                   return (
@@ -720,27 +895,37 @@ const FieldMapping = () => {
                       className={`p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer select-none group ${
                         isSelected
                           ? 'border-cyan-400 bg-cyan-950/60 shadow-[0_0_15px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400 text-white'
+                          : isRemoved
+                          ? 'border-rose-900/60 bg-rose-950/20 text-slate-400 opacity-60'
                           : isMapped
-                          ? 'border-slate-800/80 hover:border-cyan-500/40 bg-[#080d22] hover:bg-[#0d1636] text-slate-200'
-                          : 'border-slate-800/80 hover:border-amber-500/40 bg-[#080d22] hover:bg-[#121730] text-slate-300'
+                          ? 'border-slate-800 bg-[#080d22] hover:border-cyan-500/40 text-slate-200'
+                          : 'border-slate-800 bg-[#080d22] hover:border-amber-500/40 text-slate-300'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5 min-w-0">
-                        <GripVertical className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
-                        <span className="font-mono text-xs font-semibold text-slate-200 truncate group-hover:text-white">
-                          {col.name}
-                        </span>
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <GripVertical className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-mono text-xs font-semibold text-slate-200 truncate block">
+                            {col.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {col.type || 'String'}
+                          </span>
+                        </div>
                       </div>
 
-                      {isMapped ? (
-                        <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold shrink-0">
+                      {isRemoved ? (
+                        <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-500/40 text-[9px] font-bold">
+                          Removed
+                        </span>
+                      ) : isMapped ? (
+                        <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold">
                           <Check className="w-3 h-3 text-emerald-400" />
                           <span>Mapped</span>
                         </div>
                       ) : (
-                        <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-500/40 text-[10px] font-bold shrink-0">
-                          <AlertTriangle className="w-3 h-3 text-amber-400" />
-                          <span>Not mapped</span>
+                        <div className="px-2 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
+                          Unmapped
                         </div>
                       )}
                     </div>
@@ -749,52 +934,48 @@ const FieldMapping = () => {
               )}
             </div>
 
-            {/* Quick Auto-map Helper */}
+            {/* Auto-map helper button */}
             {unmappedSourceCount > 0 && (
               <button
                 onClick={handleAutoMapAll}
-                className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/30 transition-all flex items-center justify-center space-x-1.5 cursor-pointer mt-2 shadow-sm"
+                className="w-full py-2.5 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/30 transition-all flex items-center justify-center space-x-1.5 cursor-pointer mt-2"
               >
                 <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Auto-Map All Unmapped Fields</span>
+                <span>Auto-Map All Unmapped ({unmappedSourceCount})</span>
               </button>
             )}
           </div>
 
-          {/* ========================================================================= */}
-          {/* COLUMN 2: FIELD MAPPING CANVAS (lg:col-span-6) */}
-          {/* ========================================================================= */}
+          {/* COLUMN 2: FIELD MAPPING & TRANSFORMATION CANVAS (lg:col-span-6) */}
           <div className="lg:col-span-6 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4 min-h-[500px]">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-                  <Layers className="w-4 h-4" />
-                </div>
+              <div className="flex items-center space-x-2">
+                <Layers className="w-4 h-4 text-cyan-400" />
                 <div>
                   <h2 className="text-xs font-black uppercase tracking-wider text-white">
-                    FIELD MAPPING
+                    MAPPING & TRANSFORMATION CANVAS
                   </h2>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    Connect source columns to target destination fields
+                    Map columns, select transformations, rename or remove fields
                   </p>
                 </div>
               </div>
 
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
-                {connections.length} active connections
+                {activeMappings.length} Active Mappings
               </span>
             </div>
 
-            {/* Selection Hint Pill */}
+            {/* Click-to-Connect Indicator Banner */}
             {(selectedSourceCol || selectedDestField) && (
-              <div className="px-4 py-2.5 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 text-xs text-cyan-200 flex items-center justify-between shadow-md">
+              <div className="px-3.5 py-2 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 text-xs text-cyan-200 flex items-center justify-between shadow-md">
                 <div className="flex items-center space-x-2">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
                   <span>
-                    Selected:{' '}
-                    <strong className="text-white">{selectedSourceCol || `(Pick a source column)`}</strong> →{' '}
-                    <strong className="text-white">{selectedDestField || `(Pick a destination field)`}</strong>
+                    Connecting:{' '}
+                    <strong className="text-white">{selectedSourceCol || `(Pick source)`}</strong> →{' '}
+                    <strong className="text-white">{selectedDestField || `(Pick destination)`}</strong>
                   </span>
                 </div>
                 <button
@@ -809,69 +990,155 @@ const FieldMapping = () => {
               </div>
             )}
 
-            {/* Empty State vs Connected Cards */}
-            {connections.length === 0 ? (
+            {/* Active Mappings Cards */}
+            {activeMappings.length === 0 ? (
               <div className="my-auto py-16 px-6 border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center space-y-3 bg-[#080d22]/50">
-                <div className="w-13 h-13 rounded-2xl bg-[#0d1636] text-cyan-400 border border-cyan-500/30 flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 rounded-2xl bg-[#0d1636] text-cyan-400 border border-cyan-500/30 flex items-center justify-center shadow-lg">
                   <Link2 className="w-6 h-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white">No Connections Created</h3>
-                  <p className="text-xs text-slate-400 max-w-sm font-medium leading-relaxed">
-                    Click a Source Column on the left, then click a Destination Field on the right to
-                    connect them.
+                  <h3 className="text-sm font-bold text-white">No Mappings Configured</h3>
+                  <p className="text-xs text-slate-400 max-w-sm font-medium">
+                    Use the Map Column selector above or click a Source Column to create a mapping.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
-                {connections.map((conn) => {
+                {activeMappings.map((cfg) => {
+                  const isEditingThisRename = editingRename[cfg.id] !== undefined;
+                  const currentRenameVal = editingRename[cfg.id] ?? cfg.destField;
+                  const transDef = TRANSFORMATION_TYPES.find((t) => t.id === cfg.transformation) || TRANSFORMATION_TYPES[0];
+                  const TransIcon = transDef.icon;
+
                   return (
                     <div
-                      key={conn.id}
-                      className="p-3.5 rounded-2xl border border-slate-800/90 bg-[#080d22] hover:border-cyan-500/40 hover:bg-[#0c1433] shadow-md flex items-center justify-between gap-3 transition-all group"
+                      key={cfg.id}
+                      className="p-3.5 rounded-2xl border border-slate-800 bg-[#080d22] hover:border-cyan-500/40 hover:bg-[#0c1433] shadow-md flex flex-col gap-2.5 transition-all group"
                     >
-                      {/* Left: Source Column */}
-                      <div className="flex items-center space-x-2 min-w-0 flex-1">
-                        <span className="px-3 py-1.5 rounded-xl bg-slate-900 font-mono text-xs font-bold text-cyan-300 truncate border border-cyan-500/30">
-                          {conn.sourceField}
-                        </span>
+                      {/* Top Row: Source Column → Arrow → Destination Column (with Rename UI) */}
+                      <div className="flex items-center justify-between gap-2">
+                        {/* Source Column Badge */}
+                        <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                          <GripVertical className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                          <span
+                            className="px-2.5 py-1 rounded-xl bg-slate-900 font-mono text-xs font-bold text-cyan-300 truncate border border-cyan-500/30"
+                            title={cfg.sourceField}
+                          >
+                            {cfg.sourceField}
+                          </span>
+                        </div>
+
+                        {/* Arrow */}
+                        <ArrowRight className="w-4 h-4 text-slate-500 shrink-0" />
+
+                        {/* Destination Column (Renamable Input or Badge) */}
+                        <div className="flex items-center space-x-1.5 min-w-0 flex-1 justify-end">
+                          {isEditingThisRename ? (
+                            <div className="flex items-center space-x-1 w-full max-w-[190px]">
+                              <input
+                                type="text"
+                                value={currentRenameVal}
+                                onChange={(e) =>
+                                  setEditingRename((prev) => ({ ...prev, [cfg.id]: e.target.value }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleRenameColumn(cfg.id, currentRenameVal);
+                                  if (e.key === 'Escape') {
+                                    setEditingRename((prev) => {
+                                      const n = { ...prev };
+                                      delete n[cfg.id];
+                                      return n;
+                                    });
+                                  }
+                                }}
+                                autoFocus
+                                className="w-full bg-[#070b1c] text-xs font-mono font-bold text-indigo-300 px-2 py-1 rounded-lg border border-indigo-500 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRenameColumn(cfg.id, currentRenameVal)}
+                                className="p-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
+                                title="Save Rename"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-1.5">
+                              <span
+                                className={`px-2.5 py-1 rounded-xl font-mono text-xs font-bold truncate border ${
+                                  cfg.isRenamed
+                                    ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                                    : 'bg-indigo-950/80 text-indigo-300 border-indigo-500/40'
+                                }`}
+                                title={cfg.destField}
+                              >
+                                {cfg.destField}
+                              </span>
+
+                              {/* Rename column button */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingRename((prev) => ({ ...prev, [cfg.id]: cfg.destField }))
+                                }
+                                className="p-1 text-slate-500 hover:text-amber-400 hover:bg-amber-950/30 rounded-lg transition-colors cursor-pointer"
+                                title="Rename destination column"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Middle: Connection Arrow & Quick Transform Selector */}
-                      <div className="flex items-center space-x-2 shrink-0">
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
-                        <select
-                          value={conn.transformation || 'none'}
-                          onChange={(e) => handleUpdateTransformation(conn.id, e.target.value)}
-                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border focus:outline-none cursor-pointer transition-colors ${
-                            conn.transformation && conn.transformation !== 'none'
-                              ? 'bg-purple-950/80 text-purple-300 border-purple-500/40'
-                              : 'bg-[#070b1c] text-slate-400 border-slate-800 hover:text-slate-200'
-                          }`}
-                          title="Click to apply inline transformation"
-                        >
-                          {TRANSFORMATION_OPTIONS.map((opt) => (
-                            <option key={opt.id} value={opt.id} className="bg-[#0c122b] text-slate-200">
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
-                      </div>
+                      {/* Bottom Row: Transformation Selector + Remove Column Action */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
+                        {/* Transformation Selection UI */}
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            Transform:
+                          </span>
+                          <div className="relative">
+                            <select
+                              value={cfg.transformation || 'none'}
+                              onChange={(e) => handleUpdateTransformation(cfg.id, e.target.value)}
+                              className={`text-[11px] font-semibold pl-2 pr-6 py-1 rounded-lg border focus:outline-none cursor-pointer transition-colors ${transDef.badgeStyle}`}
+                            >
+                              {TRANSFORMATION_TYPES.map((t) => (
+                                <option key={t.id} value={t.id} className="bg-[#0c122b] text-slate-200">
+                                  {t.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <TransIcon className="w-3 h-3 text-slate-400" />
+                        </div>
 
-                      {/* Right: Destination Field & Delete */}
-                      <div className="flex items-center space-x-2 min-w-0 flex-1 justify-end">
-                        <span className="px-3 py-1.5 rounded-xl bg-indigo-950/80 font-mono text-xs font-bold text-indigo-300 truncate border border-indigo-500/40">
-                          {conn.destField}
-                        </span>
-                        <button
-                          onClick={() => handleRemoveConnection(conn.id)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
-                          title="Disconnect field"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Actions: Remove Column / Drop & Disconnect */}
+                        <div className="flex items-center space-x-2">
+                          {/* Remove Column Action */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveColumn(cfg.id)}
+                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold text-rose-400 bg-rose-950/30 hover:bg-rose-950/70 border border-rose-500/30 hover:border-rose-500/60 transition-all flex items-center space-x-1 cursor-pointer"
+                            title="Remove/exclude this column from destination schema"
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                            <span>Remove Column</span>
+                          </button>
+
+                          {/* Delete Connection */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConnection(cfg.id)}
+                            className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Disconnect mapping"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -880,62 +1147,48 @@ const FieldMapping = () => {
             )}
           </div>
 
-          {/* ========================================================================= */}
-          {/* COLUMN 3: DESTINATION FIELDS (lg:col-span-3) */}
-          {/* ========================================================================= */}
+          {/* COLUMN 3: DESTINATION SCHEMA & EXCLUDED COLUMNS (lg:col-span-3) */}
           <div className="lg:col-span-3 rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-5 shadow-2xl backdrop-blur-xl flex flex-col space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-7 h-7 rounded-xl bg-cyan-950/80 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-                  <Target className="w-4 h-4" />
-                </div>
+              <div className="flex items-center space-x-2">
+                <Target className="w-4 h-4 text-cyan-400" />
                 <h2 className="text-xs font-black uppercase tracking-wider text-white">
                   DESTINATION FIELDS
                 </h2>
               </div>
-
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
-                {connectedDestCount} of {totalDestCount} connected
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                {activeMappings.length} output cols
               </span>
             </div>
 
-            {/* Add Destination Input Form */}
+            {/* Add Destination Field Form */}
             <form onSubmit={handleAddDestinationField} className="flex items-center space-x-2">
               <input
                 type="text"
                 value={newDestFieldName}
                 onChange={(e) => setNewDestFieldName(e.target.value)}
-                placeholder="Add new destination fie..."
-                className="flex-1 bg-[#070b1c] hover:bg-[#0a0f26] focus:bg-[#0d1538] text-xs text-white placeholder-slate-500 px-3 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/30 font-medium transition-all"
+                placeholder="Add destination field..."
+                className="flex-1 bg-[#070b1c] text-xs text-white placeholder-slate-500 px-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-cyan-400 font-medium"
               />
               <button
                 type="submit"
                 disabled={!newDestFieldName.trim()}
-                className="w-9 h-9 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-md transition-all cursor-pointer disabled:opacity-40"
+                className="w-8 h-8 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-md transition-all cursor-pointer disabled:opacity-40"
                 title="Add Field"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
             </form>
 
             {/* Destination Fields List */}
-            {destinationFields.length === 0 ? (
-              <div className="py-16 px-4 border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center space-y-3 bg-[#080d22]/50">
-                <div className="w-13 h-13 rounded-2xl bg-[#0d1636] text-cyan-400 border border-cyan-500/30 flex items-center justify-center shadow-lg">
-                  <Target className="w-6 h-6" />
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+              {destinationFields.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-500">
+                  No destination fields defined
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white">No destination fields</h3>
-                  <p className="text-xs text-slate-400 max-w-xs font-medium leading-relaxed">
-                    Add your first destination field to start mapping.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
-                {destinationFields.map((field) => {
-                  const conn = destToConnectionMap[field.name];
+              ) : (
+                destinationFields.map((field) => {
+                  const conn = destToConfigMap[field.name];
                   const isConnected = Boolean(conn);
                   const isSelected = selectedDestField === field.name;
 
@@ -943,155 +1196,213 @@ const FieldMapping = () => {
                     <div
                       key={field.name}
                       onClick={() => handleDestFieldClick(field.name)}
-                      className={`p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer select-none group ${
+                      className={`p-2.5 rounded-xl border transition-all flex items-center justify-between cursor-pointer select-none ${
                         isSelected
                           ? 'border-indigo-400 bg-indigo-950/60 shadow-[0_0_15px_rgba(99,102,241,0.35)] ring-1 ring-indigo-400 text-white'
                           : isConnected
-                          ? 'border-slate-800/80 hover:border-cyan-500/40 bg-[#080d22] hover:bg-[#0d1636] text-slate-200'
-                          : 'border-slate-800/80 hover:border-indigo-500/40 bg-[#080d22] hover:bg-[#121730] text-slate-300'
+                          ? 'border-slate-800 bg-[#080d22] hover:border-cyan-500/40 text-slate-200'
+                          : 'border-slate-800 bg-[#080d22] text-slate-400 hover:border-indigo-500/40'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                        <GripVertical className="w-4 h-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
-                        <div className="min-w-0">
-                          <span className="font-mono text-xs font-semibold text-slate-200 truncate block group-hover:text-white">
-                            {field.name}
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-xs font-semibold text-slate-200 truncate block">
+                          {field.name}
+                        </span>
+                        {isConnected && (
+                          <span className="text-[10px] text-cyan-400 font-medium truncate block">
+                            ← {conn.sourceField}
                           </span>
-                          {isConnected && (
-                            <span className="text-[10px] text-cyan-400/80 font-medium truncate block">
-                              ← {conn.sourceField}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2 shrink-0">
-                        {isConnected ? (
-                          <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span>Connected</span>
-                          </div>
-                        ) : (
-                          <div className="px-2 py-0.5 rounded-full bg-slate-900 text-slate-500 border border-slate-800 text-[10px] font-semibold">
-                            Empty
-                          </div>
                         )}
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveDestinationField(field.name);
-                          }}
-                          className="p-1 rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
-                          title="Delete destination field"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
+
+                      {isConnected ? (
+                        <div className="px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold">
+                          Mapped
+                        </div>
+                      ) : (
+                        <div className="px-2 py-0.5 rounded-full bg-slate-900 text-slate-500 text-[9px] font-semibold">
+                          Empty
+                        </div>
+                      )}
                     </div>
                   );
-                })}
+                })
+              )}
+            </div>
+
+            {/* Removed / Excluded Columns Section */}
+            {removedMappings.length > 0 && (
+              <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between text-xs text-rose-300 font-bold">
+                  <span className="flex items-center space-x-1">
+                    <Trash2 className="w-3 h-3 text-rose-400" />
+                    <span>Excluded / Removed Columns ({removedMappings.length})</span>
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {removedMappings.map((m) => (
+                    <div
+                      key={m.id}
+                      className="px-2.5 py-1.5 rounded-lg bg-rose-950/20 border border-rose-900/40 flex items-center justify-between text-xs font-mono"
+                    >
+                      <span className="text-slate-400 line-through truncate max-w-[140px]">
+                        {m.sourceField}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreColumn(m.id)}
+                        className="text-[10px] font-bold text-cyan-300 hover:text-white flex items-center space-x-1 cursor-pointer"
+                        title="Restore column to pipeline"
+                      >
+                        <Undo2 className="w-3 h-3" />
+                        <span>Restore</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* TAB CONTENT: 2. TRANSFORMATION BUILDER */}
+      {/* ─── TAB 2: TRANSFORMATION BUILDER MATRIX ────────────────────────────── */}
       {activeTab === 'transformations' && (
         <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-6">
-          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-cyan-500/15 pb-4 gap-3">
             <div>
-              <h2 className="text-base font-bold text-white">Transformation Engine Pipeline</h2>
+              <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                <Wand2 className="w-4 h-4 text-purple-400" />
+                <span>Transformation Rule Matrix</span>
+              </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Apply data cleaning, whitespace stripping, type casting, or case standardizations.
+                Manage column transformations: Trim whitespace, UPPERCASE, lowercase, Number casts, and Empty removal.
               </p>
             </div>
-            <button
-              onClick={() => {
-                connections.forEach((c) => handleUpdateTransformation(c.id, 'trim'));
-                showNotification('success', 'Applied "Trim Whitespace" to all active connections.');
-              }}
-              className="text-xs font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-3.5 py-1.5 rounded-xl hover:bg-cyan-900/60 cursor-pointer shadow-sm"
-            >
-              Batch Apply: Trim All
-            </button>
+
+            {/* Batch actions */}
+            <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+              <button
+                type="button"
+                onClick={() => handleBatchApplyTransformation('trim')}
+                className="text-xs font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-3 py-1.5 rounded-xl hover:bg-cyan-900/60 cursor-pointer shadow-sm"
+              >
+                Trim All
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBatchApplyTransformation('uppercase')}
+                className="text-xs font-bold text-violet-300 bg-violet-950/70 border border-violet-500/40 px-3 py-1.5 rounded-xl hover:bg-violet-900/60 cursor-pointer shadow-sm"
+              >
+                UPPERCASE All
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBatchApplyTransformation('none')}
+                className="text-xs font-bold text-slate-400 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl hover:bg-slate-800 cursor-pointer shadow-sm"
+              >
+                Reset to Raw
+              </button>
+            </div>
           </div>
 
-          {connections.length === 0 ? (
+          {activeMappings.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs font-medium">
-              No active field connections to transform. Create connections in the Field Mapping Workspace first.
+              No active field mappings to transform. Map columns in the workspace first.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {connections.map((conn) => (
-                <div key={conn.id} className="p-4 rounded-2xl border border-slate-800/90 bg-[#080d22] space-y-3 shadow-md">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-white">
-                      {conn.sourceField} → {conn.destField}
-                    </span>
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/40 uppercase">
-                      {conn.transformation || 'raw'}
-                    </span>
-                  </div>
+              {activeMappings.map((cfg) => {
+                const transDef = TRANSFORMATION_TYPES.find((t) => t.id === cfg.transformation) || TRANSFORMATION_TYPES[0];
+                const TransIcon = transDef.icon;
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-slate-400">
-                      Select Field Transformation:
-                    </label>
-                    <select
-                      value={conn.transformation || 'none'}
-                      onChange={(e) => handleUpdateTransformation(conn.id, e.target.value)}
-                      className="w-full text-xs bg-[#070b1c] border border-slate-700 text-slate-200 rounded-xl p-2.5 font-medium focus:outline-none focus:border-cyan-400 cursor-pointer shadow-inner"
-                    >
-                      {TRANSFORMATION_OPTIONS.map((opt) => (
-                        <option key={opt.id} value={opt.id} className="bg-[#0c122b] text-slate-200">
-                          {opt.label} — {opt.description}
-                        </option>
-                      ))}
-                    </select>
+                return (
+                  <div
+                    key={cfg.id}
+                    className="p-4 rounded-2xl border border-slate-800 bg-[#080d22] space-y-3 shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-white truncate max-w-[180px]">
+                        {cfg.sourceField} → {cfg.destField}
+                      </span>
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${transDef.badgeStyle}`}>
+                        {transDef.shortLabel}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold text-slate-400 flex items-center space-x-1.5">
+                        <TransIcon className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Select Transformation:</span>
+                      </label>
+                      <select
+                        value={cfg.transformation || 'none'}
+                        onChange={(e) => handleUpdateTransformation(cfg.id, e.target.value)}
+                        className="w-full text-xs bg-[#070b1c] border border-slate-700 text-slate-200 rounded-xl p-2.5 font-medium focus:outline-none focus:border-cyan-400 cursor-pointer shadow-inner"
+                      >
+                        {TRANSFORMATION_TYPES.map((opt) => (
+                          <option key={opt.id} value={opt.id} className="bg-[#0c122b] text-slate-200">
+                            {opt.label} — {opt.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {cfg.isRenamed && (
+                      <div className="text-[10px] text-amber-400 font-semibold flex items-center space-x-1">
+                        <Edit3 className="w-3 h-3" />
+                        <span>Output column renamed to "{cfg.destField}"</span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* TAB CONTENT: 3. LIVE OUTPUT PREVIEW */}
+      {/* ─── TAB 3: LIVE OUTPUT PREVIEW ──────────────────────────────────────── */}
       {activeTab === 'preview' && (
         <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-5">
           <div className="flex items-center justify-between border-b border-cyan-500/15 pb-4">
             <div>
-              <h2 className="text-base font-bold text-white">Live Transformed Output Preview</h2>
+              <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                <Eye className="w-4 h-4 text-blue-400" />
+                <span>Live Transformed Output Preview</span>
+              </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Real-time preview of source records mapped to destination fields with transformations applied.
+                Real-time preview of data records with renamed headers, transformations applied, and removed columns excluded.
               </p>
             </div>
-            <button
-              onClick={generatePreview}
-              className="text-xs font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-3.5 py-1.5 rounded-xl hover:bg-cyan-900/60 flex items-center space-x-1.5 cursor-pointer shadow-sm"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh Output</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <span className="text-[11px] font-semibold text-cyan-400 bg-cyan-950/70 border border-cyan-500/30 px-3 py-1 rounded-xl">
+                ⚡ Reactive Live Sync
+              </span>
+            </div>
           </div>
 
-          {previewLoading ? (
-            <div className="py-12 text-center text-slate-400 text-xs">Generating live pipeline preview...</div>
-          ) : previewRows.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs font-medium">
-              No transformed rows to display. Ensure connections are mapped.
+          {previewRows.length === 0 ? (
+            <div className="py-16 text-center text-slate-500 text-xs font-medium">
+              No transformed rows to display. Ensure connections are mapped in the workspace.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-slate-800">
               <table className="w-full text-xs text-left">
                 <thead className="bg-[#070b1c] border-b border-slate-800 text-cyan-300 font-bold">
                   <tr>
-                    {destinationFields.map((dest) => (
-                      <th key={dest.name} className="px-4 py-3 font-mono">
-                        {dest.name}
+                    <th className="px-4 py-3 w-10 text-slate-500 font-mono">#</th>
+                    {activeMappings.map((cfg) => (
+                      <th key={cfg.id} className="px-4 py-3 font-mono">
+                        <div className="flex items-center space-x-1">
+                          <span>{cfg.destField}</span>
+                          {cfg.isRenamed && (
+                            <span className="text-[9px] px-1 rounded bg-amber-950 text-amber-300 border border-amber-500/40">
+                              renamed
+                            </span>
+                          )}
+                        </div>
                       </th>
                     ))}
                   </tr>
@@ -1099,15 +1410,19 @@ const FieldMapping = () => {
                 <tbody className="divide-y divide-slate-800/50">
                   {previewRows.slice(0, 15).map((row, idx) => (
                     <tr key={idx} className="hover:bg-[#0d1636]/50">
-                      {destinationFields.map((dest) => (
-                        <td key={dest.name} className="px-4 py-2.5 font-mono text-slate-200">
-                          {row[dest.name] !== null && row[dest.name] !== undefined ? (
-                            String(row[dest.name])
-                          ) : (
-                            <span className="text-slate-600 italic">null</span>
-                          )}
-                        </td>
-                      ))}
+                      <td className="px-4 py-2.5 font-mono text-slate-600">{idx + 1}</td>
+                      {activeMappings.map((cfg) => {
+                        const cellVal = row[cfg.destField];
+                        return (
+                          <td key={cfg.id} className="px-4 py-2.5 font-mono text-slate-200">
+                            {cellVal !== null && cellVal !== undefined ? (
+                              String(cellVal)
+                            ) : (
+                              <span className="text-slate-600 italic">null</span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -1117,49 +1432,38 @@ const FieldMapping = () => {
         </div>
       )}
 
-      {/* TAB CONTENT: 4. STAGE 5: PROCESSING ENGINE */}
-      {activeTab === 'engine' && (
-        <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-6">
-          <div className="border-b border-cyan-500/15 pb-4">
-            <h2 className="text-base font-bold text-white">Pipeline Execution & Processing Status</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Review schema validation, connection completeness, and trigger processing batch.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
-              <span className="text-xs font-semibold text-slate-400">Pipeline Validation</span>
-              <p className="text-lg font-bold text-emerald-400 mt-1">Ready for Execution</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                {mappedSourceCount} inputs wired to {connectedDestCount} targets.
+      {/* ─── TAB 4: PIPELINE STATE CONFIGURATION (JSON) ──────────────────────── */}
+      {activeTab === 'config' && (
+        <div className="rounded-3xl bg-[#0c122b]/90 border border-cyan-500/20 p-6 shadow-2xl backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                <Code className="w-4 h-4 text-emerald-400" />
+                <span>Frontend Pipeline State</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Exact JSON state maintained on the client for ETL field mapping, transformations, renames, and exclusions.
               </p>
             </div>
-
-            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
-              <span className="text-xs font-semibold text-slate-400">Target Pipeline Schema</span>
-              <p className="text-lg font-bold text-white mt-1">{totalDestCount} Destination Fields</p>
-              <p className="text-[11px] text-slate-500 mt-1">{transformationsCount} inline transform rules</p>
-            </div>
-
-            <div className="p-5 rounded-2xl border border-slate-800 bg-[#080d22]">
-              <span className="text-xs font-semibold text-slate-400">Processing Mode</span>
-              <p className="text-lg font-bold text-cyan-400 mt-1">Chunked Stream Engine</p>
-              <p className="text-[11px] text-slate-500 mt-1">High-throughput 64KB buffer memory slice</p>
-            </div>
           </div>
 
-          <div className="pt-4 flex justify-end">
-            <button
-              onClick={() => {
-                handleSavePipeline();
-                showNotification('success', 'Processing pipeline triggered successfully!');
-              }}
-              className="px-6 py-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all flex items-center space-x-2 cursor-pointer"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Execute Pipeline & Preprocessing</span>
-            </button>
+          <div className="rounded-2xl bg-[#070b1c] border border-slate-800 p-4 font-mono text-xs text-cyan-300 max-h-[500px] overflow-y-auto">
+            <pre>
+              {JSON.stringify(
+                {
+                  datasetId: currentDataset?.id,
+                  datasetName: currentDataset?.name,
+                  totalConfiguredMappings: activeMappings.length,
+                  removedColumnsCount: removedMappings.length,
+                  renamedColumnsCount: renamedCount,
+                  transformationsCount: transformedCount,
+                  mappings: activeMappings,
+                  removedColumns: removedMappings,
+                },
+                null,
+                2
+              )}
+            </pre>
           </div>
         </div>
       )}
@@ -1185,14 +1489,14 @@ const FieldMapping = () => {
           </button>
         </div>
 
-        {/* Right Actions: Preview Changes & Save Pipeline */}
+        {/* Right Actions: Preview & Save Pipeline */}
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setActiveTab('preview')}
             className="px-4 py-2.5 rounded-full text-xs font-semibold text-slate-200 bg-[#0d1636] hover:bg-[#121e4a] border border-cyan-500/30 shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
           >
             <Eye className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Preview Changes</span>
+            <span>Preview Output</span>
           </button>
 
           <button
@@ -1200,7 +1504,7 @@ const FieldMapping = () => {
             disabled={isSaving}
             className="px-6 py-2.5 rounded-full text-xs font-bold text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
           >
-            <Save className="w-3.5 h-3.5" />
+            <Save className="w-4 h-4" />
             <span>{isSaving ? 'Saving...' : 'Save Pipeline'}</span>
           </button>
         </div>
