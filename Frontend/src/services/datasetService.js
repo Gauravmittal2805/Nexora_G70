@@ -6,27 +6,30 @@
 
 import api from './api';
 
-// Clean workspace: No mock or sample datasets
-const INITIAL_DATASETS = [];
-
 const STORAGE_KEY = 'nexora_datasets_catalog';
 
-const MOCK_NAMES = new Set([
-  'customer_churn_analysis.csv',
-  'global_financial_metrics.csv',
-  'housing_price_index_2025.csv',
-  'iot_telemetry_sensors.json',
-]);
 const MOCK_IDS = new Set(['ds-churn-101', 'ds-financial-404', 'ds-housing-202', 'ds-iot-303']);
 
 function isMockDataset(d) {
   if (!d) return true;
-  const idStr = String(d.id || d.datasetId || '').toLowerCase();
-  const nameStr = String(d.name || d.fileName || '').toLowerCase();
-  if (MOCK_IDS.has(d.id) || MOCK_IDS.has(d.datasetId)) return true;
-  if (MOCK_NAMES.has(nameStr)) return true;
-  if (idStr.startsWith('ds-churn') || idStr.startsWith('ds-financial') || idStr.startsWith('ds-housing') || idStr.startsWith('ds-iot')) return true;
-  return false;
+  const id = String(d.id || d.datasetId || '');
+  const idLower = id.toLowerCase();
+  
+  // If it's a real MongoDB document or has a timestamped uploaded datasetId, it is an actual uploaded dataset
+  if (d._id && String(d._id).length === 24 && String(d._id) !== id) {
+    return false;
+  }
+  
+  // Specifically check for fallback sample catalog IDs when no database record exists
+  const isSampleId =
+    MOCK_IDS.has(d.id) ||
+    MOCK_IDS.has(d.datasetId) ||
+    idLower === 'ds-churn-101' ||
+    idLower === 'ds-financial-404' ||
+    idLower === 'ds-housing-202' ||
+    idLower === 'ds-iot-303';
+
+  return isSampleId;
 }
 
 /**
@@ -34,8 +37,9 @@ function isMockDataset(d) {
  */
 export function normalizeDataset(raw) {
   if (!raw) return null;
-  const id = raw.id || raw.datasetId || `ds-${Date.now()}`;
+  const id = raw.id || raw.datasetId || (raw._id ? String(raw._id) : `ds-${Date.now()}`);
   const name = raw.name || raw.fileName || 'Untitled Dataset';
+  const fileName = raw.fileName || raw.name || name;
   const format = (raw.format || (raw.fileType ? raw.fileType.toUpperCase() : 'CSV')).toUpperCase();
   const fileType = (raw.fileType || format).toLowerCase();
   const sizeBytes = Number(raw.sizeBytes ?? raw.fileSize ?? 0);
@@ -46,7 +50,9 @@ export function normalizeDataset(raw) {
   return {
     id,
     datasetId: id,
+    _id: raw._id || id,
     name,
+    fileName,
     description: raw.description || '',
     format,
     fileType,
@@ -423,6 +429,7 @@ export const datasetService = {
    * Supports ?page=1&limit=10 queries with server pagination metadata
    */
   getDatasetPreview: async (id, { page = 1, limit = 10 } = {}) => {
+    let apiError = null;
     try {
       const res = await api.get(`/datasets/${id}/preview?page=${page}&limit=${limit}`);
       if (res.data && res.data.success) {
@@ -441,19 +448,21 @@ export const datasetService = {
             hasPrevPage: page > 1,
           },
           name: res.data.name || res.data.fileName || 'Dataset Preview',
+          fileName: res.data.fileName || res.data.name || 'Dataset Preview',
           format: res.data.format || 'CSV',
           fileSizeBytes: res.data.fileSizeBytes,
           isOffline: false,
         };
       }
     } catch (err) {
-      console.warn(`Preview API call failed for dataset ${id}, falling back to local paginated slice:`, err.message);
+      console.warn(`Preview API call failed for dataset ${id}:`, err.message);
+      apiError = err;
     }
 
-    // Fallback: check locally stored dataset and perform client pagination
+    // Fallback: check locally stored dataset and perform client pagination only if rows exist
     const dataset = datasetService.getDatasetById(id);
-    if (dataset) {
-      const allRows = dataset.sampleRows || [];
+    if (dataset && Array.isArray(dataset.sampleRows) && dataset.sampleRows.length > 0) {
+      const allRows = dataset.sampleRows;
       const validLimit = Math.max(1, limit);
       const totalAvailable = allRows.length;
       const totalPages = Math.max(1, Math.ceil(totalAvailable / validLimit));
@@ -476,13 +485,21 @@ export const datasetService = {
           hasPrevPage: validPage > 1,
         },
         name: dataset.name,
+        fileName: dataset.fileName || dataset.name,
         format: dataset.format,
         fileSizeBytes: dataset.sizeBytes,
         isOffline: true,
       };
     }
 
-    throw new Error(`Dataset with ID "${id}" could not be found.`);
+    const errorMsg =
+      apiError?.data?.message ||
+      apiError?.message ||
+      `Failed to load preview for dataset "${id}". Please verify backend connection.`;
+    const enriched = new Error(errorMsg);
+    enriched.status = apiError?.status;
+    enriched.originalError = apiError;
+    throw enriched;
   },
 
   /**
@@ -676,17 +693,22 @@ export const datasetService = {
    * Delete dataset by ID (calls backend + removes from storage)
    */
   deleteDataset: async (id) => {
+    let apiError = null;
     try {
       await api.delete(`/datasets/${id}`);
     } catch (err) {
       console.warn('Backend delete error (removing locally):', err.message);
+      apiError = err;
     }
     const datasets = datasetService.getDatasets();
-    const updated = datasets.filter((d) => d.id !== id && d.datasetId !== id);
+    const updated = datasets.filter((d) => d.id !== id && d.datasetId !== id && d._id !== id);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn(e);
+    }
+    if (apiError && apiError.status !== 404 && !apiError.isOffline) {
+      throw apiError;
     }
     return updated;
   },

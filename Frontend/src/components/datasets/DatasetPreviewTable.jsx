@@ -29,6 +29,17 @@ const TYPE_STYLES = {
   Categorical: 'bg-purple-950/80 text-purple-300 border-purple-500/40',
   Boolean: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40',
   DateTime: 'bg-pink-950/80 text-pink-300 border-pink-500/40',
+  // Lowercase & alternate schema types from backend stream profiler
+  number: 'bg-cyan-950/80 text-cyan-300 border-cyan-500/40',
+  integer: 'bg-blue-950/80 text-blue-300 border-blue-500/40',
+  float: 'bg-cyan-950/80 text-cyan-300 border-cyan-500/40',
+  string: 'bg-slate-800 text-slate-300 border-slate-700',
+  text: 'bg-slate-800 text-slate-300 border-slate-700',
+  categorical: 'bg-purple-950/80 text-purple-300 border-purple-500/40',
+  boolean: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40',
+  date: 'bg-pink-950/80 text-pink-300 border-pink-500/40',
+  datetime: 'bg-pink-950/80 text-pink-300 border-pink-500/40',
+  object: 'bg-amber-950/80 text-amber-300 border-amber-500/40',
 };
 
 const DatasetPreviewTable = ({
@@ -187,40 +198,56 @@ const DatasetPreviewTable = ({
   // 1. Loading State
   if (isLoading) {
     return (
-      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/30 p-8 shadow-xl space-y-6 text-slate-300 animate-pulse">
+      <div className="bg-[#0a0f24] rounded-3xl border border-cyan-500/30 p-8 shadow-2xl space-y-6 text-slate-300">
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center">
               <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
             </div>
             <div>
-              <div className="h-5 w-48 bg-slate-800 rounded-md mb-2" />
-              <div className="h-3 w-64 bg-slate-800/60 rounded-md" />
+              <h4 className="text-base font-bold text-white flex items-center space-x-2">
+                <span>Loading Dataset Preview</span>
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {title ? `Streaming tabular records for "${title}"...` : 'Fetching preview records and calculating schema statistics...'}
+              </p>
             </div>
           </div>
-          <div className="h-8 w-24 bg-slate-800 rounded-xl" />
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Close Preview"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
-        {/* Skeleton table headers */}
-        <div className="space-y-3">
+        {/* Shimmer skeleton headers */}
+        <div className="space-y-3 animate-pulse">
           <div className="grid grid-cols-6 gap-3 pb-3 border-b border-slate-800">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-7 bg-slate-800/80 rounded-lg" />
+              <div key={i} className="h-8 bg-slate-800/80 rounded-xl" />
             ))}
           </div>
-          {/* Skeleton table rows */}
+          {/* Shimmer skeleton rows */}
           {[...Array(8)].map((_, i) => (
             <div key={i} className="grid grid-cols-6 gap-3 py-2 border-b border-slate-900/60">
               {[...Array(6)].map((_, j) => (
-                <div key={j} className="h-5 bg-slate-800/40 rounded" />
+                <div key={j} className="h-5 bg-slate-800/40 rounded-lg" />
               ))}
             </div>
           ))}
         </div>
 
-        <div className="flex items-center justify-between pt-2">
-          <div className="h-4 w-40 bg-slate-800/60 rounded" />
-          <div className="h-8 w-32 bg-slate-800 rounded-xl" />
+        <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
+          <span className="flex items-center space-x-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span>Streaming byte stream from server...</span>
+          </span>
+          <span className="font-mono text-[11px] text-slate-500">API: /datasets/:id/preview</span>
         </div>
       </div>
     );
@@ -228,20 +255,26 @@ const DatasetPreviewTable = ({
 
   // 2. Error State
   if (error) {
+    const errorText = typeof error === 'string' ? error : error?.message || 'Failed to retrieve preview records.';
     return (
-      <div className="bg-[#0a0f24] rounded-3xl border border-rose-500/40 p-8 shadow-xl text-center space-y-4">
-        <div className="w-14 h-14 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-400 flex items-center justify-center mx-auto">
+      <div className="bg-[#0a0f24] rounded-3xl border border-rose-500/40 p-8 shadow-2xl text-center space-y-4">
+        <div className="w-14 h-14 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-950/50">
           <AlertTriangle className="w-7 h-7" />
         </div>
-        <div className="max-w-md mx-auto space-y-1">
-          <h4 className="text-base font-bold text-white">Failed to Load Dataset Preview</h4>
-          <p className="text-xs text-rose-300 leading-relaxed">{error}</p>
+        <div className="max-w-md mx-auto space-y-2">
+          <h4 className="text-base font-bold text-white">Dataset Preview Error</h4>
+          <p className="text-xs text-rose-300 leading-relaxed font-mono bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 text-left">
+            {errorText}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            The dataset stream could not be loaded or the server connection was interrupted. Check your network or retry.
+          </p>
         </div>
         <div className="flex items-center justify-center space-x-3 pt-2">
           {onRetry && (
             <button
               onClick={onRetry}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Retry Preview</span>
@@ -250,7 +283,7 @@ const DatasetPreviewTable = ({
           {onClose && (
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer border border-slate-700"
             >
               Close
             </button>
@@ -464,7 +497,8 @@ const DatasetPreviewTable = ({
               </th>
               {columns.map((col) => {
                 const isSorted = sortColumn === col.name;
-                const typeStyle = TYPE_STYLES[col.type] || TYPE_STYLES.String;
+                const rawType = col.type || col.dataType || 'String';
+                const typeStyle = TYPE_STYLES[rawType] || TYPE_STYLES[String(rawType).toLowerCase()] || TYPE_STYLES.String;
 
                 return (
                   <th
@@ -479,7 +513,7 @@ const DatasetPreviewTable = ({
                           <span
                             className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${typeStyle}`}
                           >
-                            {col.type || 'String'}
+                            {rawType}
                           </span>
                           {col.missingCount > 0 && (
                             <span className="text-[9px] font-semibold text-amber-400">
