@@ -3,8 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Dataset = require('../models/Dataset');
-const { parseCsvStream, parseJsonStream } = require('../utils/streamParsers');
-const { uploadDatasetFile, getDownloadUrl, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
+const { parseCsvStream, parseJsonStream, readPreviewRowsFromStream } = require('../utils/streamParsers');
+const { uploadDatasetFile, getDownloadUrl, getDatasetFileStream, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
 const { profileDataset, profileInMemoryRecords } = require('../utils/datasetProfiler');
 const { validateFieldMappings } = require('../utils/mappingValidator');
 
@@ -570,56 +570,276 @@ const getDatasetById = async (req, res, next) => {
 };
 
 /**
- * @desc    Read CSV/JSON file using streaming with pagination and return requested preview records
+ * Infer a human-readable column type from raw data values
+ * Returns one of: 'String' | 'Integer' | 'Float' | 'Boolean' | 'DateTime'
+ */
+const inferColumnType = (values) => {
+  const nonNull = values.filter((v) => v !== null && v !== undefined && v !== '');
+  if (nonNull.length === 0) return 'String';
+
+  let intCount = 0;
+  let floatCount = 0;
+  let boolCount = 0;
+  let dateCount = 0;
+
+  for (const v of nonNull) {
+    if (typeof v === 'boolean' || v === 'true' || v === 'false' || v === 'True' || v === 'False') {
+      boolCount++;
+      continue;
+    }
+    const str = String(v).trim();
+    // ISO date detection
+    if (/^\d{4}[-/]\d{2}[-/]\d{2}(T\d{2}:\d{2}:\d{2})?/.test(str)) {
+      const ts = Date.parse(str);
+      if (!isNaN(ts)) { dateCount++; continue; }
+    }
+    const num = Number(str);
+    if (!isNaN(num) && str !== '') {
+      if (Number.isInteger(num) && !str.includes('.')) {
+        intCount++;
+      } else {
+        floatCount++;
+      }
+      continue;
+    }
+  }
+
+  const total = nonNull.length;
+  const threshold = 0.80; // 80% majority wins
+
+  if (boolCount / total >= threshold) return 'Boolean';
+  if (dateCount / total >= threshold) return 'DateTime';
+  if ((intCount + floatCount) / total >= threshold) {
+    return floatCount > 0 ? 'Float' : 'Integer';
+  }
+  return 'String';
+};
+
+/**
+ * Build enriched column schema from sampled rows, merging with stored metadata
+ */
+const buildColumnSchema = (rows, storedColumns = []) => {
+  if (!rows || rows.length === 0) {
+    return storedColumns.map((c) => ({
+      name: c.name,
+      dataType: c.dataType || 'string',
+      type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : c.dataType === 'date' ? 'DateTime' : 'String',
+      missingCount: c.nullCount || 0,
+      sampleValues: c.sampleValues || []
+    }));
+  }
+
+  // Collect all column names in insertion order
+  const colNames = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (row && typeof row === 'object') {
+      for (const k of Object.keys(row)) {
+        if (!seen.has(k)) { seen.add(k); colNames.push(k); }
+      }
+    }
+  }
+
+  return colNames.map((colName) => {
+    const values = rows.map((r) => (r ? r[colName] : undefined));
+    const nullCount = values.filter((v) => v === null || v === undefined || v === '').length;
+    const sampleValues = values.filter((v) => v !== null && v !== undefined && v !== '').slice(0, 5);
+    const inferredType = inferColumnType(values);
+
+    // Check stored column for a pre-computed type to cross-reference
+    const stored = storedColumns.find((c) => c.name === colName);
+    const storedDataType = stored?.dataType;
+
+    // Prefer profiler's strongly-typed value; fall back to inferred
+    let resolvedType = inferredType;
+    if (storedDataType) {
+      if (storedDataType === 'number') resolvedType = inferredType === 'Integer' ? 'Integer' : 'Float';
+      else if (storedDataType === 'boolean') resolvedType = 'Boolean';
+      else if (storedDataType === 'date') resolvedType = 'DateTime';
+      else if (storedDataType === 'string' && inferredType === 'String') resolvedType = 'String';
+    }
+
+    // Map to raw dataType for downstream consistency
+    const dataTypeMap = { Float: 'number', Integer: 'integer', Boolean: 'boolean', DateTime: 'date', String: 'string' };
+
+    return {
+      name: colName,
+      dataType: dataTypeMap[resolvedType] || 'string',
+      type: resolvedType,
+      nullCount,
+      missingCount: nullCount,
+      missingPercentage: rows.length > 0 ? Number(((nullCount / rows.length) * 100).toFixed(2)) : 0,
+      sampleValues
+    };
+  });
+};
+
+/**
+ * @desc    Stream and fetch sample records from a dataset stored in Backblaze B2 (or local fallback)
+ *          Returns 50–100 records for preview with column names, inferred data types, and missing-value counts.
+ *          Falls back to cached previewData stored at upload time if live streaming is unavailable.
  * @route   GET /api/datasets/:id/preview
- * @access  Private (Restricted to dataset owner)
+ * @query   limit   – number of records to return (default 50, max 100)
+ * @query   page    – page number for paginated access (default 1)
+ * @access  Private / Public (owner-restricted when dataset belongs to a user)
  */
 const getDatasetPreview = async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    // ── 1. Validate query parameters ──────────────────────────────────────────
+    const rawLimit = parseInt(req.query.limit, 10);
+    const rawPage = parseInt(req.query.page, 10);
+
+    if (req.query.limit !== undefined && (isNaN(rawLimit) || rawLimit < 1)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid query parameter: "limit" must be a positive integer (1–100).'
+      });
+    }
+    if (req.query.page !== undefined && (isNaN(rawPage) || rawPage < 1)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid query parameter: "page" must be a positive integer.'
+      });
+    }
+
+    const limit = Math.min(isNaN(rawLimit) ? 50 : rawLimit, 100);
+    const page = isNaN(rawPage) ? 1 : rawPage;
+
+    // ── 2. Resolve dataset ─────────────────────────────────────────────────────
     const dataset = await findUserDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
       return res.status(404).json({
         success: false,
-        message: 'Dataset not found'
+        message: `Dataset not found. No dataset with ID "${req.params.id}" exists or you do not have access.`
       });
     }
 
-    const allRows = dataset.previewData || [];
-    const totalAvailable = allRows.length;
-    const totalPages = Math.max(1, Math.ceil(totalAvailable / limit));
-    const validPage = Math.min(Math.max(1, page), totalPages);
-    const startIndex = (validPage - 1) * limit;
-    const paginatedRows = allRows.slice(startIndex, startIndex + limit);
+    // ── 3. Authorization guard ─────────────────────────────────────────────────
+    if (dataset.userId && req.user && String(dataset.userId) !== String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to preview this dataset.'
+      });
+    }
 
+    // ── 4. Determine dataset properties ───────────────────────────────────────
+    const fileType = (dataset.fileType || 'csv').toLowerCase();
+    const delimiter = dataset.metadata?.delimiter || ',';
+    const storedColumns = dataset.metadata?.columns || [];
+    const totalRowCount = dataset.metadata?.rowCount || 0;
+
+    let previewRows = [];
+    let streamSource = 'cache';  // Track where data came from for diagnostics
+
+    // ── 5. Attempt live streaming from B2 / local storage ─────────────────────
+    const storageProvider = dataset.storage?.provider;
+    const storageBucket = dataset.storage?.bucket;
+    const storageKey = dataset.storage?.key;
+    const localPath = dataset.storage?.localPath;
+
+    const canStream = (storageProvider === 'backblaze_b2' || localPath) && storageKey;
+
+    if (canStream) {
+      try {
+        // Use a range-limited fetch for large CSV files (fetch first 10 MB to cover preview rows)
+        const rangeHeader = fileType === 'csv' ? 'bytes=0-10485760' : null; // 10 MB range for CSV
+
+        const fileStream = await getDatasetFileStream({
+          provider: storageProvider,
+          bucket: storageBucket,
+          key: storageKey,
+          localPath,
+          range: rangeHeader
+        });
+
+        if (fileStream) {
+          const streamResult = await readPreviewRowsFromStream({
+            stream: fileStream,
+            fileType,
+            page,
+            limit,
+            delimiter
+          });
+
+          if (streamResult.rows && streamResult.rows.length > 0) {
+            previewRows = streamResult.rows;
+            streamSource = storageProvider === 'backblaze_b2' ? 'backblaze_b2' : 'local_file';
+          }
+        }
+      } catch (streamErr) {
+        // Non-fatal: log and fall through to cached preview data
+        console.warn(`[Preview] Live stream failed for dataset "${dataset.datasetId}": ${streamErr.message}. Falling back to cached preview.`);
+      }
+    }
+
+    // ── 6. Fall back to stored previewData if live stream returned no rows ─────
+    if (previewRows.length === 0) {
+      const allCached = dataset.previewData || [];
+
+      if (allCached.length === 0) {
+        return res.status(422).json({
+          success: false,
+          message: 'Dataset preview is unavailable. The file could not be accessed from storage and no cached preview exists.',
+          datasetId: dataset.datasetId,
+          hint: 'Try re-uploading the dataset to regenerate the preview cache.'
+        });
+      }
+
+      // Paginate cached rows
+      const totalCached = allCached.length;
+      const totalCachedPages = Math.max(1, Math.ceil(totalCached / limit));
+      const validPage = Math.min(Math.max(1, page), totalCachedPages);
+      const startIndex = (validPage - 1) * limit;
+      previewRows = allCached.slice(startIndex, startIndex + limit);
+      streamSource = 'cache';
+    }
+
+    // ── 7. Build enriched column schema from streamed rows + stored metadata ───
+    const columnSchema = buildColumnSchema(previewRows, storedColumns);
+
+    // ── 8. Compute pagination metadata ────────────────────────────────────────
+    const effectiveTotalRows = totalRowCount || (dataset.previewData?.length ?? previewRows.length);
+    const totalPages = Math.max(1, Math.ceil(effectiveTotalRows / limit));
+
+    // ── 9. Format and return response ─────────────────────────────────────────
     return res.status(200).json({
       success: true,
       datasetId: dataset.datasetId,
       name: dataset.name || dataset.fileName,
       fileName: dataset.fileName,
-      format: (dataset.fileType || 'csv').toUpperCase(),
-      fileSizeBytes: dataset.fileSize,
-      totalRows: dataset.metadata?.rowCount || totalAvailable,
-      totalAvailableRows: totalAvailable,
-      columns: (dataset.metadata?.columns || []).map((c) => ({
-        name: c.name,
-        type: c.dataType === 'number' ? 'Float' : c.dataType === 'boolean' ? 'Boolean' : 'String',
-        missingCount: c.nullCount || 0
-      })),
+      fileType,
+      format: fileType.toUpperCase(),
+      fileSizeBytes: dataset.fileSize || 0,
+      formattedFileSize: formatBytes(dataset.fileSize || 0),
+      storage: {
+        provider: storageProvider || 'unknown',
+        streamSource
+      },
+      schema: {
+        totalColumns: columnSchema.length,
+        columns: columnSchema
+      },
+      // Top-level columns array for backward compatibility
+      columns: columnSchema,
+      dataset: {
+        totalRows: effectiveTotalRows,
+        totalColumns: columnSchema.length,
+        delimiter: fileType === 'csv' ? delimiter : null
+      },
       pagination: {
-        page: validPage,
+        page,
         limit,
         totalPages,
-        totalCount: totalAvailable,
-        hasNextPage: validPage < totalPages,
-        hasPrevPage: validPage > 1
+        totalRows: effectiveTotalRows,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
       },
-      previewCount: paginatedRows.length,
-      rows: paginatedRows
+      previewCount: previewRows.length,
+      rows: previewRows
     });
   } catch (error) {
+    console.error('[Preview API Error]', error.message);
     next(error);
   }
 };
