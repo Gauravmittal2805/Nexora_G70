@@ -56,7 +56,26 @@
               ]
             }
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created or 200 OK\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"JWT token saved to environment\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.token) {",
+                  "        pm.environment.set(\"jwt_token\", jsonData.token);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         },
         {
           "name": "Login User",
@@ -86,15 +105,64 @@
               ]
             }
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"JWT token received and saved to environment\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData).to.have.property(\"token\");",
+                  "    pm.environment.set(\"jwt_token\", jsonData.token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     },
     {
       "name": "Datasets",
+      "description": "APIs for dataset upload, logged-in user listing, detail retrieval with metadata, preview, and deletion",
       "item": [
         {
-          "name": "Upload Dataset",
+          "name": "Upload Dataset (CSV/JSON)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Dataset uploaded successfully with metadata\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    var ds = jsonData.dataset || jsonData.data;",
+                  "    pm.expect(ds).to.be.an(\"object\");",
+                  "    pm.expect(ds.datasetId).to.be.a(\"string\");",
+                  "    pm.environment.set(\"datasetId\", ds.datasetId);",
+                  "    // Validate metadata fields",
+                  "    pm.expect(ds).to.have.property(\"fileName\");",
+                  "    pm.expect(ds).to.have.property(\"fileSize\");",
+                  "    pm.expect(ds).to.have.property(\"uploadDate\");",
+                  "    pm.expect(ds).to.have.property(\"fileType\");",
+                  "    pm.expect(ds).to.have.property(\"metadata\");",
+                  "    pm.expect(ds.metadata).to.have.property(\"rowCount\");",
+                  "    pm.expect(ds.metadata).to.have.property(\"columnCount\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -145,7 +213,38 @@
           "response": []
         },
         {
-          "name": "List Datasets",
+          "name": "List Datasets of Logged-In User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Returns user datasets array and pagination\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.datasets).to.be.an(\"array\");",
+                  "    pm.expect(jsonData).to.have.property(\"totalCount\");",
+                  "    pm.expect(jsonData).to.have.property(\"pagination\");",
+                  "    if (jsonData.datasets.length > 0) {",
+                  "        var first = jsonData.datasets[0];",
+                  "        pm.expect(first).to.have.property(\"fileName\");",
+                  "        pm.expect(first).to.have.property(\"fileSize\");",
+                  "        pm.expect(first).to.have.property(\"uploadDate\");",
+                  "        pm.expect(first).to.have.property(\"fileType\");",
+                  "        pm.expect(first).to.have.property(\"metadata\");",
+                  "        if (!pm.environment.get(\"datasetId\")) {",
+                  "            pm.environment.set(\"datasetId\", first.datasetId);",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -188,7 +287,25 @@
           "response": []
         },
         {
-          "name": "Get Dataset By ID",
+          "name": "List Datasets (Dedicated Route /api/datasets/my)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Returns logged-in user datasets with metadata\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.datasets).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -198,7 +315,7 @@
               }
             ],
             "url": {
-              "raw": "http://localhost:5001/api/datasets/:id",
+              "raw": "http://localhost:5001/api/datasets/my",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -207,12 +324,194 @@
               "path": [
                 "api",
                 "datasets",
-                ":id"
+                "my"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dataset Details by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Dataset details returned with all required metadata\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    var ds = jsonData.dataset || jsonData.data;",
+                  "    pm.expect(ds).to.be.an(\"object\");",
+                  "    // 1. Filename metadata",
+                  "    pm.expect(ds.fileName || ds.filename).to.be.a(\"string\");",
+                  "    // 2. File size metadata",
+                  "    pm.expect(ds.fileSize).to.be.a(\"number\");",
+                  "    // 3. Upload date metadata",
+                  "    pm.expect(ds.uploadDate || ds.uploadedAt || ds.createdAt).to.be.a(\"string\");",
+                  "    // 4. File type metadata",
+                  "    pm.expect(ds.fileType).to.be.oneOf([\"csv\", \"json\", \"jsonl\"]);",
+                  "    pm.expect(ds.format).to.be.a(\"string\");",
+                  "    // 5. Nested metadata object with row & column counts",
+                  "    pm.expect(ds.metadata).to.be.an(\"object\");",
+                  "    pm.expect(ds.metadata.rowCount).to.be.at.least(0);",
+                  "    pm.expect(ds.metadata.columnCount).to.be.at.least(0);",
+                  "    pm.expect(ds.columns).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}",
+              "protocol": "http",
+              "host": [
+                "localhost"
               ],
-              "variable": [
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dataset Preview – 50 Records (Default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has success flag\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns rows array with records\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.rows).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.rows.length).to.be.at.least(1);",
+                  "    pm.expect(jsonData.previewCount).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.previewCount).to.equal(jsonData.rows.length);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns 50 records (default limit)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.pagination.limit).to.equal(50);",
+                  "    pm.expect(jsonData.rows.length).to.be.at.most(50);",
+                  "});",
+                  "",
+                  "pm.test(\"Columns array contains name and type fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.columns).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.columns.length).to.be.at.least(1);",
+                  "    var col = jsonData.columns[0];",
+                  "    pm.expect(col).to.have.property(\"name\");",
+                  "    pm.expect(col).to.have.property(\"type\");",
+                  "    pm.expect(col).to.have.property(\"dataType\");",
+                  "    pm.expect(col).to.have.property(\"missingCount\");",
+                  "    pm.expect(col).to.have.property(\"missingPercentage\");",
+                  "});",
+                  "",
+                  "pm.test(\"Detected data types are valid values\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var validTypes = [\"String\", \"Integer\", \"Float\", \"Boolean\", \"DateTime\"];",
+                  "    jsonData.columns.forEach(function(col) {",
+                  "        pm.expect(validTypes).to.include(col.type, \"Column '\" + col.name + \"' has invalid type: \" + col.type);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Schema object present with column count\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.schema).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.schema.totalColumns).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.schema.columns).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.schema.totalColumns).to.equal(jsonData.schema.columns.length);",
+                  "});",
+                  "",
+                  "pm.test(\"Pagination metadata is complete\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var pg = jsonData.pagination;",
+                  "    pm.expect(pg).to.have.property(\"page\");",
+                  "    pm.expect(pg).to.have.property(\"limit\");",
+                  "    pm.expect(pg).to.have.property(\"totalPages\");",
+                  "    pm.expect(pg).to.have.property(\"totalRows\");",
+                  "    pm.expect(pg).to.have.property(\"hasNextPage\");",
+                  "    pm.expect(pg).to.have.property(\"hasPrevPage\");",
+                  "    pm.expect(pg.page).to.be.a(\"number\");",
+                  "    pm.expect(pg.limit).to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"Storage source is reported\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.storage).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.storage).to.have.property(\"provider\");",
+                  "    pm.expect(jsonData.storage).to.have.property(\"streamSource\");",
+                  "    var validSources = [\"backblaze_b2\", \"local_file\", \"cache\"];",
+                  "    pm.expect(validSources).to.include(jsonData.storage.streamSource);",
+                  "});",
+                  "",
+                  "pm.test(\"Dataset metadata fields are present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.datasetId).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.fileName).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.fileType).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.format).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.fileSizeBytes).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.formattedFileSize).to.be.a(\"string\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/preview?limit=50&page=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}",
+                "preview"
+              ],
+              "query": [
                 {
-                  "key": "id",
-                  "value": "dataset_id_here"
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
                 }
               ]
             }
@@ -220,7 +519,47 @@
           "response": []
         },
         {
-          "name": "Get Dataset Preview",
+          "name": "Dataset Preview – 100 Records (Max Limit)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns at most 100 records\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.rows).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.rows.length).to.be.at.most(100);",
+                  "    pm.expect(jsonData.pagination.limit).to.equal(100);",
+                  "});",
+                  "",
+                  "pm.test(\"All column types detected correctly\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var validTypes = [\"String\", \"Integer\", \"Float\", \"Boolean\", \"DateTime\"];",
+                  "    jsonData.columns.forEach(function(col) {",
+                  "        pm.expect(validTypes).to.include(col.type);",
+                  "        pm.expect(col.dataType).to.be.oneOf([\"string\", \"integer\", \"number\", \"boolean\", \"date\"]);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Row objects match detected column names\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.rows.length > 0 && jsonData.columns.length > 0) {",
+                  "        var colNames = jsonData.columns.map(function(c) { return c.name; });",
+                  "        var rowKeys = Object.keys(jsonData.rows[0]);",
+                  "        rowKeys.forEach(function(key) {",
+                  "            pm.expect(colNames).to.include(key, \"Row key '\" + key + \"' not found in columns\");",
+                  "        });",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -230,7 +569,7 @@
               }
             ],
             "url": {
-              "raw": "http://localhost:5001/api/datasets/:id/preview?limit=20",
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/preview?limit=100&page=1",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -239,19 +578,80 @@
               "path": [
                 "api",
                 "datasets",
-                ":id",
+                "{{datasetId}}",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dataset Preview – Page 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Page 2 metadata is correct\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.pagination.page).to.equal(2);",
+                  "    pm.expect(jsonData.pagination.hasPrevPage).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is valid even on page 2\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.rows).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.columns).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/preview?limit=20&page=2",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}",
                 "preview"
               ],
               "query": [
                 {
                   "key": "limit",
                   "value": "20"
-                }
-              ],
-              "variable": [
+                },
                 {
-                  "key": "id",
-                  "value": "dataset_id_here"
+                  "key": "page",
+                  "value": "2"
                 }
               ]
             }
@@ -259,7 +659,82 @@
           "response": []
         },
         {
-          "name": "Get Dataset Download URL",
+          "name": "Dataset Preview – Sample Dataset (No Auth)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns rows from sample dataset without auth\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.rows).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.rows.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test(\"Sample dataset columns are typed correctly\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var validTypes = [\"String\", \"Integer\", \"Float\", \"Boolean\", \"DateTime\"];",
+                  "    jsonData.columns.forEach(function(c) {",
+                  "        pm.expect(validTypes).to.include(c.type);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/ds-churn-101/preview?limit=50",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "ds-churn-101",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative – Preview Non-Existent Dataset (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message mentions dataset not found\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message.toLowerCase()).to.include(\"not found\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -269,7 +744,7 @@
               }
             ],
             "url": {
-              "raw": "http://localhost:5001/api/datasets/:id/download",
+              "raw": "http://localhost:5001/api/datasets/ds-invalid-00000000-does-not-exist/preview",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -278,13 +753,59 @@
               "path": [
                 "api",
                 "datasets",
-                ":id",
-                "download"
+                "ds-invalid-00000000-does-not-exist",
+                "preview"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Negative – Preview with Invalid Limit (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message flags invalid limit parameter\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message.toLowerCase()).to.include(\"limit\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/preview?limit=-5",
+              "protocol": "http",
+              "host": [
+                "localhost"
               ],
-              "variable": [
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}",
+                "preview"
+              ],
+              "query": [
                 {
-                  "key": "id",
-                  "value": "dataset_id_here"
+                  "key": "limit",
+                  "value": "-5"
                 }
               ]
             }
@@ -292,7 +813,122 @@
           "response": []
         },
         {
-          "name": "Delete Dataset",
+          "name": "Negative – Preview with Invalid Page (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message flags invalid page parameter\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message.toLowerCase()).to.include(\"page\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/preview?page=0",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dataset Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Returns dataset profile metrics\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.columns).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}/profile",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}",
+                "profile"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Dataset by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Dataset deleted successfully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.message).to.include(\"deleted\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "DELETE",
             "header": [
@@ -302,7 +938,7 @@
               }
             ],
             "url": {
-              "raw": "http://localhost:5001/api/datasets/:id",
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}",
               "protocol": "http",
               "host": [
                 "localhost"
@@ -311,13 +947,51 @@
               "path": [
                 "api",
                 "datasets",
-                ":id"
+                "{{datasetId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Deleted Dataset Returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test(\"Dataset is successfully gone\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(false);",
+                  "    pm.expect(jsonData.message).to.include(\"not found\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5001/api/datasets/{{datasetId}}",
+              "protocol": "http",
+              "host": [
+                "localhost"
               ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "dataset_id_here"
-                }
+              "port": "5001",
+              "path": [
+                "api",
+                "datasets",
+                "{{datasetId}}"
               ]
             }
           },
