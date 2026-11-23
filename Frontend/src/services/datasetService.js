@@ -432,25 +432,42 @@ export const datasetService = {
     let apiError = null;
     try {
       const res = await api.get(`/datasets/${id}/preview?page=${page}&limit=${limit}`);
-      if (res.data && res.data.success) {
+      if (res.data && (res.data.success || Array.isArray(res.data.rows))) {
+        const rows = res.data.rows || [];
+        const columns = res.data.columns || res.data.schema?.columns || [];
+        const totalRows =
+          res.data.totalRows ||
+          res.data.pagination?.totalRows ||
+          res.data.dataset?.totalRows ||
+          rows.length ||
+          0;
+        const totalCount =
+          res.data.pagination?.totalCount ||
+          res.data.pagination?.totalRows ||
+          totalRows;
+        const totalPages =
+          res.data.pagination?.totalPages ||
+          Math.max(1, Math.ceil(totalCount / limit));
+
         return {
           success: true,
-          columns: res.data.columns || [],
-          rows: res.data.rows || [],
-          totalRows: res.data.totalRows || res.data.rows?.length || 0,
-          previewCount: res.data.previewCount || res.data.rows?.length || 0,
-          pagination: res.data.pagination || {
-            page,
-            limit,
-            totalPages: Math.ceil((res.data.totalRows || res.data.rows?.length || 1) / limit),
-            totalCount: res.data.totalRows || res.data.rows?.length || 0,
-            hasNextPage: false,
-            hasPrevPage: page > 1,
+          columns,
+          rows,
+          totalRows,
+          previewCount: res.data.previewCount || rows.length,
+          pagination: {
+            page: res.data.pagination?.page || page,
+            limit: res.data.pagination?.limit || limit,
+            totalPages,
+            totalCount,
+            hasNextPage: res.data.pagination?.hasNextPage ?? page < totalPages,
+            hasPrevPage: res.data.pagination?.hasPrevPage ?? page > 1,
           },
           name: res.data.name || res.data.fileName || 'Dataset Preview',
           fileName: res.data.fileName || res.data.name || 'Dataset Preview',
-          format: res.data.format || 'CSV',
+          format: (res.data.format || res.data.fileType || 'CSV').toUpperCase(),
           fileSizeBytes: res.data.fileSizeBytes,
+          storage: res.data.storage,
           isOffline: false,
         };
       }
