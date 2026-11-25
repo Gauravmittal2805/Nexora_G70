@@ -5,6 +5,17 @@
  * and seamless integration with dataset field-mapping configurations.
  */
 
+const {
+  renameColumns,
+  selectColumns,
+  toString: convertToString,
+  toNumber: convertToNumber,
+  toDate: convertToDate,
+  convertValue,
+  convertColumnTypes,
+  applyTransformations
+} = require('./transformationUtils');
+
 // =============================================================================
 // 1. Basic Transformation Functions
 // =============================================================================
@@ -172,6 +183,14 @@ const TRANSFORMATION_REGISTRY = {
   stringtonumber: stringToNumber,
   string_to_number: stringToNumber,
 
+  string: convertToString,
+  tostring: convertToString,
+  to_string: convertToString,
+
+  date: convertToDate,
+  todate: convertToDate,
+  to_date: convertToDate,
+
   removeempty: removeEmptyValues,
   removeemptyvalues: removeEmptyValues,
   remove_empty_values: removeEmptyValues
@@ -203,6 +222,9 @@ const TRANSFORMATION_REGISTRY = {
 const normalizeConfig = (rawConfig = {}) => {
   const normalized = {
     columns: {},
+    rename: rawConfig.rename || {},
+    select: rawConfig.select || null,
+    types: rawConfig.types || rawConfig.cast || {},
     options: {
       removeEmptyValues: Boolean(rawConfig.options?.removeEmptyValues),
       trimAllStrings: Boolean(rawConfig.options?.trimAllStrings),
@@ -273,7 +295,7 @@ const applyOperation = (value, operation) => {
     return value;
   }
 
-  if (opName.includes('number')) {
+  if (opName.includes('number') || opName.includes('string') || opName.includes('date')) {
     return fn(value, opParams);
   }
 
@@ -329,11 +351,20 @@ const transformRecord = (record, config = {}) => {
   }
 
   // Step 4: Optional global empty-value cleanup
-  if (parsedConfig.options.removeEmptyValues) {
-    return removeEmptyValues(result);
+  let finalResult = parsedConfig.options.removeEmptyValues ? removeEmptyValues(result) : result;
+
+  // Step 5: Optional column selection (include/exclude), column renaming, and type conversion
+  if (parsedConfig.select) {
+    finalResult = selectColumns(finalResult, parsedConfig.select);
+  }
+  if (parsedConfig.rename && Object.keys(parsedConfig.rename).length > 0) {
+    finalResult = renameColumns(finalResult, parsedConfig.rename);
+  }
+  if (parsedConfig.types && Object.keys(parsedConfig.types).length > 0) {
+    finalResult = convertColumnTypes(finalResult, parsedConfig.types);
   }
 
-  return result;
+  return finalResult;
 };
 
 /**
@@ -468,6 +499,16 @@ module.exports = {
   stringToNumber,
   removeEmptyValues,
   isEmpty,
+
+  // Column operations & basic data type conversion utilities
+  renameColumns,
+  selectColumns,
+  toString: convertToString,
+  toNumber: convertToNumber,
+  toDate: convertToDate,
+  convertValue,
+  convertColumnTypes,
+  applyTransformations,
 
   // Common registry and normalization
   TRANSFORMATION_REGISTRY,
