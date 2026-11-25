@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import datasetService from '../services/datasetService';
 import {
   ArrowLeft,
   Plus,
   Trash2,
-  Play,
   RotateCcw,
   CheckCircle2,
   AlertTriangle,
@@ -21,7 +20,10 @@ import {
   Save,
   Eye,
   X,
-  Info,
+  Wifi,
+  WifiOff,
+  Cpu,
+  FlaskConical,
 } from 'lucide-react';
 
 // ─── Transformation definitions ────────────────────────────────────────────────
@@ -110,13 +112,39 @@ const TRANSFORMATIONS = [
   },
 ];
 
-// ─── Apply all transformations in order to a single value ─────────────────────
+// ─── Apply all transformations in order to a single value (client-side) ────────
 function applyChain(value, steps) {
   return steps.reduce((v, step) => {
     const def = TRANSFORMATIONS.find((t) => t.id === step.transformId);
     if (!def) return v;
     return def.apply(v, step.params || {});
   }, value);
+}
+
+// ─── Status dot ────────────────────────────────────────────────────────────────
+function BackendStatusDot({ status }) {
+  if (status === 'connected') {
+    return (
+      <span className="inline-flex items-center space-x-1.5 text-[10px] font-bold text-emerald-300">
+        <Wifi className="w-3 h-3" />
+        <span>Backend Connected</span>
+      </span>
+    );
+  }
+  if (status === 'offline') {
+    return (
+      <span className="inline-flex items-center space-x-1.5 text-[10px] font-bold text-amber-300">
+        <WifiOff className="w-3 h-3" />
+        <span>Offline — Client Preview</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center space-x-1.5 text-[10px] font-bold text-slate-500">
+      <span className="w-2 h-2 rounded-full bg-slate-600 inline-block" />
+      <span>Checking…</span>
+    </span>
+  );
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
@@ -139,9 +167,23 @@ const TransformationConfig = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState({});
 
+  // Backend apply state
+  const [isApplying, setIsApplying] = useState(false);
+  const [backendResult, setBackendResult] = useState(null); // null | { rows, source, columns }
+  const [backendStatus, setBackendStatus] = useState('unknown'); // 'unknown' | 'connected' | 'offline'
+
+  // Save pipeline state
+  const [isSaving, setIsSaving] = useState(false);
+
   // UI
   const [notification, setNotification] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const notifTimer = useRef(null);
+
+  const showNotif = useCallback((type, message) => {
+    clearTimeout(notifTimer.current);
+    setNotification({ type, message });
+    notifTimer.current = setTimeout(() => setNotification(null), 5000);
+  }, []);
 
   // ── Load datasets ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -155,11 +197,20 @@ const TransformationConfig = () => {
       const matched = list.find((d) => d.id === paramId || d.datasetId === paramId);
       const active_ = matched || list[0] || null;
       if (active_) {
-        setSelectedDatasetId(active_.id);
+        const id = active_.id || active_.datasetId;
+        setSelectedDatasetId(id);
         setCurrentDataset(active_);
       }
       setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+
+      // Check backend reachability
+      setBackendStatus(res.isOffline ? 'offline' : 'connected');
+    }).catch(() => {
+      if (active) {
+        setIsLoading(false);
+        setBackendStatus('offline');
+      }
+    });
     return () => { active = false; };
   }, [searchParams]);
 
@@ -171,6 +222,7 @@ const TransformationConfig = () => {
     setSelectedColumn('');
     setColumnSteps({});
     setShowPreview(false);
+    setBackendResult(null);
   };
 
   // ── Step management ────────────────────────────────────────────────────────
@@ -180,6 +232,7 @@ const TransformationConfig = () => {
       const newStep = { id: `${Date.now()}-${Math.random()}`, transformId, params: {} };
       return { ...prev, [colName]: [...existing, newStep] };
     });
+    setBackendResult(null);
   }, []);
 
   const removeStep = useCallback((colName, stepId) => {
@@ -187,6 +240,7 @@ const TransformationConfig = () => {
       ...prev,
       [colName]: (prev[colName] || []).filter((s) => s.id !== stepId),
     }));
+    setBackendResult(null);
   }, []);
 
   const updateStepParam = useCallback((colName, stepId, paramKey, value) => {
@@ -196,13 +250,15 @@ const TransformationConfig = () => {
         s.id === stepId ? { ...s, params: { ...s.params, [paramKey]: value } } : s
       ),
     }));
+    setBackendResult(null);
   }, []);
 
   const clearColumnSteps = useCallback((colName) => {
     setColumnSteps((prev) => ({ ...prev, [colName]: [] }));
+    setBackendResult(null);
   }, []);
 
-  // ── Preview computation ────────────────────────────────────────────────────
+  // ── Client-side preview computation ───────────────────────────────────────
   const previewData = useMemo(() => {
     if (!currentDataset) return {};
     const sampleRows = currentDataset.sampleRows || [];
@@ -224,18 +280,83 @@ const TransformationConfig = () => {
     [columnSteps]
   );
 
-  // ── Save / Apply ───────────────────────────────────────────────────────────
+  // ── Apply Transformations via Backend ─────────────────────────────────────
+  const handleApply = async () => {
+    if (columnsWithSteps.length === 0) return;
+
+    setIsApplying(true);
+    setBackendResult(null);
+
+    const result = await datasetService.applyTransformations(
+      selectedDatasetId,
+      columnSteps,
+      10
+    );
+
+    if (result.success && !result.isOffline) {
+      // Build per-column { original, transformed } pairs from returned rows
+      const sampleRows = currentDataset?.sampleRows || [];
+      const colPreviews = {};
+
+      columnsWithSteps.forEach(([colName]) => {
+        colPreviews[colName] = sampleRows.slice(0, result.transformedRows.length).map((orig, i) => ({
+          original: orig[colName],
+          transformed: result.transformedRows[i]?.[colName] ?? null,
+        }));
+      });
+
+      setBackendResult({ source: 'backend', colPreviews });
+      setBackendStatus('connected');
+      showNotif('success', `Transformations applied via backend — ${result.count} rows processed.`);
+    } else {
+      // Offline fallback: apply client-side
+      const sampleRows = currentDataset?.sampleRows || [];
+      const colPreviews = {};
+      columnsWithSteps.forEach(([colName, steps]) => {
+        colPreviews[colName] = sampleRows.slice(0, 8).map((row) => ({
+          original: row[colName],
+          transformed: applyChain(row[colName], steps),
+        }));
+      });
+      setBackendResult({ source: 'client', colPreviews });
+      if (result.isOffline) setBackendStatus('offline');
+      showNotif(
+        'warn',
+        `Backend unreachable — showing client-side preview. ${result.error || ''}`
+      );
+    }
+
+    setIsApplying(false);
+  };
+
+  // ── Save Pipeline (persist config) ────────────────────────────────────────
   const handleSave = async () => {
+    if (columnsWithSteps.length === 0) return;
     setIsSaving(true);
     try {
-      // Stub: POST to /api/datasets/:id/transformations when API is ready
-      await new Promise((r) => setTimeout(r, 800));
-      setNotification({ type: 'success', message: `Transformation pipeline saved for "${currentDataset?.name}". API endpoint ready to connect.` });
+      // Build a named config object to persist (future: save to backend)
+      const pipelineConfig = {
+        datasetId: selectedDatasetId,
+        savedAt: new Date().toISOString(),
+        columns: Object.fromEntries(
+          columnsWithSteps.map(([col, steps]) => [
+            col,
+            steps.map((s) => ({ type: s.transformId, params: s.params })),
+          ])
+        ),
+      };
+      // Store locally as a lightweight persist mechanism
+      try {
+        const key = `nexora_transform_pipeline_${selectedDatasetId}`;
+        localStorage.setItem(key, JSON.stringify(pipelineConfig));
+      } catch {
+        // quota exceeded – ignore
+      }
+      showNotif('success', `Pipeline saved for "${currentDataset?.name}". ${columnsWithSteps.length} column(s) configured.`);
     } catch {
-      setNotification({ type: 'error', message: 'Failed to save transformation pipeline.' });
+      showNotif('error', 'Failed to save transformation pipeline.');
     } finally {
       setIsSaving(false);
-      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -307,7 +428,22 @@ const TransformationConfig = () => {
             <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
           </button>
 
-          {/* Save */}
+          {/* Apply Transformations button (backend) */}
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={isApplying || columnsWithSteps.length === 0}
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(139,92,246,0.4)] transition-all cursor-pointer disabled:opacity-40"
+          >
+            {isApplying ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Cpu className="w-3.5 h-3.5" />
+            )}
+            <span>{isApplying ? 'Applying…' : 'Apply Transformations'}</span>
+          </button>
+
+          {/* Save Pipeline button */}
           <button
             type="button"
             onClick={handleSave}
@@ -329,6 +465,8 @@ const TransformationConfig = () => {
         <div className={`flex items-center justify-between p-3.5 rounded-2xl border text-xs font-semibold animate-fade-in ${
           notification.type === 'success'
             ? 'bg-emerald-950/80 text-emerald-200 border-emerald-500/40'
+            : notification.type === 'warn'
+            ? 'bg-amber-950/80 text-amber-200 border-amber-500/40'
             : 'bg-rose-950/80 text-rose-200 border-rose-500/40'
         }`}>
           <div className="flex items-center space-x-2">
@@ -343,12 +481,30 @@ const TransformationConfig = () => {
         </div>
       )}
 
-      {/* ── API readiness banner ───────────────────────────────────────────── */}
-      <div className="flex items-start space-x-3 p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-xs text-indigo-300">
-        <Info className="w-4 h-4 shrink-0 mt-0.5 text-indigo-400" />
-        <p>
-          <span className="font-bold">API Ready:</span> Transformations run client-side for preview. When the backend transformation endpoint is live, connect it via <code className="bg-indigo-900/50 px-1 rounded">POST /api/datasets/:id/transformations</code>.
-        </p>
+      {/* ── Backend status banner ──────────────────────────────────────────── */}
+      <div className={`flex items-center justify-between p-3.5 rounded-2xl border text-xs ${
+        backendStatus === 'connected'
+          ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-300'
+          : backendStatus === 'offline'
+          ? 'bg-amber-950/20 border-amber-500/20 text-amber-300'
+          : 'bg-indigo-950/20 border-indigo-500/20 text-indigo-300'
+      }`}>
+        <div className="flex items-center space-x-2">
+          <FlaskConical className="w-4 h-4 shrink-0" />
+          <span>
+            <span className="font-bold">Transformation Engine — </span>
+            {backendStatus === 'connected' && (
+              <span>Backend connected. Click <span className="font-mono font-bold">Apply Transformations</span> to process via API and see real output.</span>
+            )}
+            {backendStatus === 'offline' && (
+              <span>Backend offline — previews run client-side. Start the backend on port <span className="font-mono font-bold">5001</span> to enable server-side processing.</span>
+            )}
+            {backendStatus === 'unknown' && (
+              <span>Checking backend availability…</span>
+            )}
+          </span>
+        </div>
+        <BackendStatusDot status={backendStatus} />
       </div>
 
       {/* ── Stats strip ───────────────────────────────────────────────────── */}
@@ -389,6 +545,7 @@ const TransformationConfig = () => {
             {(currentDataset?.columns || []).map((col) => {
               const steps = columnSteps[col.name] || [];
               const isSelected = selectedColumn === col.name;
+              const hasBackendResult = backendResult?.colPreviews?.[col.name];
               return (
                 <button
                   key={col.name}
@@ -406,6 +563,11 @@ const TransformationConfig = () => {
                       {steps.length > 0 && (
                         <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/40">
                           {steps.length}
+                        </span>
+                      )}
+                      {hasBackendResult && (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                          ✓
                         </span>
                       )}
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${
@@ -578,13 +740,82 @@ const TransformationConfig = () => {
                 </div>
               </div>
 
-              {/* Inline preview for this column */}
-              {currentSteps.length > 0 && previewData[selectedColumn] && (
+              {/* ── Backend Result Panel (for selected column) ──────────────── */}
+              {backendResult?.colPreviews?.[selectedColumn] && (
+                <div className={`rounded-3xl border p-5 shadow-xl space-y-4 ${
+                  backendResult.source === 'backend'
+                    ? 'bg-[#0a0f24] border-emerald-500/20'
+                    : 'bg-[#0a0f24] border-amber-500/20'
+                }`}>
+                  <div className="flex items-center space-x-2 pb-3 border-b border-slate-800">
+                    <Cpu className={`w-4 h-4 ${backendResult.source === 'backend' ? 'text-emerald-400' : 'text-amber-400'}`} />
+                    <h2 className="text-sm font-bold text-white">
+                      {backendResult.source === 'backend' ? 'Backend Result' : 'Client-side Preview'} —{' '}
+                      <span className={`font-mono ${backendResult.source === 'backend' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                        {selectedColumn}
+                      </span>
+                    </h2>
+                    <span className={`ml-auto text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                      backendResult.source === 'backend'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                        : 'bg-amber-950 text-amber-300 border-amber-500/40'
+                    }`}>
+                      {backendResult.source === 'backend' ? '✓ Via Backend API' : '⚡ Client Fallback'}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-800">
+                          <th className="text-left px-4 py-2.5 text-slate-400 font-bold uppercase tracking-widest bg-[#070b1c] w-8">#</th>
+                          <th className="text-left px-4 py-2.5 text-slate-400 font-bold uppercase tracking-widest bg-[#070b1c]">Original Value</th>
+                          <th className="text-left px-4 py-2.5 text-cyan-400 font-bold uppercase tracking-widest bg-[#070b1c]">→ Transformed</th>
+                          <th className="text-left px-4 py-2.5 text-slate-400 font-bold uppercase tracking-widest bg-[#070b1c]">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backendResult.colPreviews[selectedColumn].map((row, i) => {
+                          const changed = String(row.original) !== String(row.transformed);
+                          const isNull = row.transformed === null || row.transformed === undefined;
+                          return (
+                            <tr key={i} className={`border-b border-slate-800/50 ${changed ? 'bg-indigo-950/10' : ''}`}>
+                              <td className="px-4 py-2.5 text-slate-600 font-mono">{i + 1}</td>
+                              <td className="px-4 py-2.5 font-mono text-slate-300">
+                                {row.original === null || row.original === undefined
+                                  ? <span className="text-slate-600 italic">null</span>
+                                  : String(row.original)}
+                              </td>
+                              <td className={`px-4 py-2.5 font-mono font-bold ${isNull ? 'text-rose-400 italic' : changed ? 'text-cyan-300' : 'text-slate-400'}`}>
+                                {isNull ? 'null' : String(row.transformed)}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                {isNull
+                                  ? <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-500/40">Nullified</span>
+                                  : changed
+                                  ? <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/40">
+                                      <Zap className="w-2.5 h-2.5" /><span>Modified</span>
+                                    </span>
+                                  : <span className="text-slate-600 text-[10px]">Unchanged</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Inline client-side preview (when no backend result yet) ── */}
+              {!backendResult && currentSteps.length > 0 && previewData[selectedColumn] && (
                 <div className="bg-[#0a0f24] rounded-3xl border border-indigo-500/20 p-5 shadow-xl space-y-4">
                   <div className="flex items-center space-x-2 pb-3 border-b border-slate-800">
-                    <Play className="w-4 h-4 text-indigo-400" />
-                    <h2 className="text-sm font-bold text-white">Sample Preview — <span className="font-mono text-indigo-300">{selectedColumn}</span></h2>
-                    <span className="text-xs text-slate-400 ml-auto">First {previewData[selectedColumn]?.length} rows</span>
+                    <Eye className="w-4 h-4 text-indigo-400" />
+                    <h2 className="text-sm font-bold text-white">
+                      Live Preview — <span className="font-mono text-indigo-300">{selectedColumn}</span>
+                    </h2>
+                    <span className="text-xs text-slate-400 ml-auto">Client-side · {previewData[selectedColumn]?.length} rows</span>
                   </div>
 
                   <div className="overflow-x-auto rounded-2xl border border-slate-800">
@@ -615,8 +846,7 @@ const TransformationConfig = () => {
                               <td className="px-4 py-2.5">
                                 {changed
                                   ? <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/40">
-                                      <Zap className="w-2.5 h-2.5" />
-                                      <span>Modified</span>
+                                      <Zap className="w-2.5 h-2.5" /><span>Modified</span>
                                     </span>
                                   : <span className="text-slate-600 text-[10px]">—</span>}
                               </td>
@@ -633,8 +863,121 @@ const TransformationConfig = () => {
         </div>
       </div>
 
-      {/* ── Global preview: all configured columns ─────────────────────────── */}
-      {showPreview && columnsWithSteps.length > 0 && (
+      {/* ── Backend Apply Result: All Columns ─────────────────────────────── */}
+      {backendResult && columnsWithSteps.length > 0 && (
+        <div className={`rounded-3xl border p-5 shadow-xl space-y-5 ${
+          backendResult.source === 'backend'
+            ? 'bg-[#0a0f24] border-emerald-500/20'
+            : 'bg-[#0a0f24] border-amber-500/20'
+        }`}>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-base font-bold text-white flex items-center space-x-2">
+              <Cpu className={`w-4 h-4 ${backendResult.source === 'backend' ? 'text-emerald-400' : 'text-amber-400'}`} />
+              <span>{backendResult.source === 'backend' ? 'Applied Output' : 'Client Preview'} — All Columns</span>
+              <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${
+                backendResult.source === 'backend'
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                  : 'bg-amber-950 text-amber-300 border-amber-500/40'
+              }`}>
+                {columnsWithSteps.length} column{columnsWithSteps.length !== 1 ? 's' : ''}
+              </span>
+            </h2>
+            <div className="flex items-center space-x-3">
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                backendResult.source === 'backend'
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                  : 'bg-amber-950 text-amber-300 border-amber-500/40'
+              }`}>
+                {backendResult.source === 'backend' ? '✓ Backend API' : '⚡ Client Fallback'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBackendResult(null)}
+                className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {columnsWithSteps.map(([colName]) => {
+            const rows = backendResult.colPreviews?.[colName] || [];
+            const isExpanded = previewExpanded[`result_${colName}`] !== false;
+            const steps = columnSteps[colName] || [];
+            return (
+              <div key={colName} className="rounded-2xl border border-slate-800 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setPreviewExpanded((p) => ({ ...p, [`result_${colName}`]: !isExpanded }))}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-[#070b1c] hover:bg-[#0c1230] transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="font-mono text-sm font-bold text-white">{colName}</span>
+                    <div className="flex items-center space-x-1.5">
+                      {steps.map((s) => {
+                        const def = TRANSFORMATIONS.find((t) => t.id === s.transformId);
+                        return (
+                          <span key={s.id} className={`text-[9px] font-extrabold px-2 py-0.5 rounded border ${def?.badgeStyle || ''}`}>
+                            {def?.label || s.transformId}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {isExpanded
+                    ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                    : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                </button>
+
+                {isExpanded && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-800 bg-[#070b1c]/50">
+                          <th className="text-left px-4 py-2 text-slate-500 font-bold w-8">#</th>
+                          <th className="text-left px-4 py-2 text-slate-400 font-bold">Original</th>
+                          <th className="text-left px-4 py-2 text-cyan-400 font-bold">Transformed</th>
+                          <th className="text-left px-4 py-2 text-slate-400 font-bold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.slice(0, 8).map((row, i) => {
+                          const changed = String(row.original) !== String(row.transformed);
+                          const isNull = row.transformed === null || row.transformed === undefined;
+                          return (
+                            <tr key={i} className={`border-b border-slate-800/40 ${changed ? 'bg-indigo-950/10' : ''}`}>
+                              <td className="px-4 py-2 text-slate-600 font-mono">{i + 1}</td>
+                              <td className="px-4 py-2 font-mono text-slate-300">
+                                {row.original === null ? <span className="text-slate-600 italic">null</span> : String(row.original)}
+                              </td>
+                              <td className={`px-4 py-2 font-mono font-bold ${isNull ? 'text-rose-400 italic' : changed ? 'text-cyan-300' : 'text-slate-400'}`}>
+                                {isNull ? 'null' : String(row.transformed)}
+                              </td>
+                              <td className="px-4 py-2">
+                                {isNull
+                                  ? <span className="text-[10px] font-bold text-rose-400">Nullified</span>
+                                  : changed
+                                  ? <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/40">
+                                      <Zap className="w-2.5 h-2.5" /><span>Modified</span>
+                                    </span>
+                                  : <span className="text-slate-600 text-[10px]">Unchanged</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Global client preview: all configured columns ──────────────────── */}
+      {showPreview && columnsWithSteps.length > 0 && !backendResult && (
         <div className="bg-[#0a0f24] rounded-3xl border border-indigo-500/20 p-5 shadow-xl space-y-5">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <h2 className="text-base font-bold text-white flex items-center space-x-2">
@@ -644,7 +987,7 @@ const TransformationConfig = () => {
                 {columnsWithSteps.length} column{columnsWithSteps.length !== 1 ? 's' : ''}
               </span>
             </h2>
-            <p className="text-xs text-slate-400">Original vs. transformed for first 5 rows</p>
+            <p className="text-xs text-slate-400">Client-side · Original vs. transformed · First 5 rows</p>
           </div>
 
           {columnsWithSteps.map(([colName]) => {
@@ -653,7 +996,6 @@ const TransformationConfig = () => {
             const steps = columnSteps[colName] || [];
             return (
               <div key={colName} className="rounded-2xl border border-slate-800 overflow-hidden">
-                {/* Column header */}
                 <button
                   type="button"
                   onClick={() => setPreviewExpanded((p) => ({ ...p, [colName]: !isExpanded }))}
@@ -677,7 +1019,6 @@ const TransformationConfig = () => {
                     : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
 
-                {/* Preview table */}
                 {isExpanded && (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">

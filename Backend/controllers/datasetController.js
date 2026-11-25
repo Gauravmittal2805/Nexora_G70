@@ -7,6 +7,13 @@ const { parseCsvStream, parseJsonStream, readPreviewRowsFromStream } = require('
 const { uploadDatasetFile, getDownloadUrl, getDatasetFileStream, deleteDatasetFile, LOCAL_STORAGE_DIR } = require('../utils/b2Storage');
 const { profileDataset, profileInMemoryRecords } = require('../utils/datasetProfiler');
 const { validateFieldMappings } = require('../utils/mappingValidator');
+const {
+  transformRecord,
+  transformDataset,
+  normalizeConfig,
+  generateTransformConfigFromMapping,
+  applyMappingAndTransformations,
+} = require('../utils/transformationEngine');
 
 /**
  * Helper to find a dataset by either its custom datasetId (UUID) or Mongo _id

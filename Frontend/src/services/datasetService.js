@@ -660,6 +660,80 @@ export const datasetService = {
   },
 
   /**
+   * Apply column-level transformation pipeline to dataset sample rows.
+   *
+   * Sends the UI's columnSteps array to the backend transformation engine and
+   * returns per-column { original, transformed } pairs for preview.
+   *
+   * Payload sent to POST /api/datasets/:id/transform:
+   * {
+   *   useMapping: false,
+   *   config: {
+   *     transformations: [{ column, steps: [{ type }] }]
+   *   }
+   * }
+   *
+   * On network failure, returns { success: false, isOffline: true }.
+   */
+  applyTransformations: async (id, columnSteps, _sampleSize = 10) => {
+    // Build the config.columns format the backend engine understands
+    // columnSteps: { [colName]: [{ id, transformId, params }] }
+    const columns = {};
+    Object.entries(columnSteps).forEach(([col, steps]) => {
+      if (!steps || steps.length === 0) return;
+      columns[col] = steps.map((s) => {
+        // Map frontend IDs → engine IDs (engine registry accepts these exact strings)
+        const typeMap = {
+          trim: 'trim',
+          uppercase: 'uppercase',
+          lowercase: 'lowercase',
+          toNumber: 'toNumber',
+          removeEmpty: 'removeempty',
+          replace: 'replace',
+        };
+        const opName = typeMap[s.transformId] || s.transformId;
+        // For ops with params, pass as an object so the engine can read them
+        if (s.params && Object.keys(s.params).length > 0) {
+          return { type: opName, params: s.params };
+        }
+        return opName;
+      });
+    });
+
+    try {
+      const res = await api.post(`/datasets/${id}/transform`, {
+        useMapping: false,
+        projectToTarget: false,
+        config: { columns },
+      });
+
+      if (!res.data || !res.data.success) {
+        return { success: false, isOffline: false, error: res.data?.message || 'Unknown error' };
+      }
+
+      // res.data.rows = transformed rows; we need to pair with original rows
+      const transformedRows = res.data.rows || [];
+      return {
+        success: true,
+        isOffline: false,
+        transformedRows,
+        count: res.data.count || transformedRows.length,
+        datasetId: res.data.datasetId,
+      };
+    } catch (err) {
+      const isOffline =
+        err.code === 'ERR_NETWORK' ||
+        err.message?.includes('Network Error') ||
+        err.code === 'ECONNREFUSED';
+      return {
+        success: false,
+        isOffline,
+        error: err.message || 'Request failed',
+      };
+    }
+  },
+
+  /**
    * Get all datasets from storage (fresh and clean, no mock/fake datasets)
    */
   getDatasets: () => {
