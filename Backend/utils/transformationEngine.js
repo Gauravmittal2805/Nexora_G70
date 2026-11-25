@@ -13,7 +13,8 @@ const {
   toDate: convertToDate,
   convertValue,
   convertColumnTypes,
-  applyTransformations
+  applyTransformations,
+  validateTransformationConfig
 } = require('./transformationUtils');
 
 // =============================================================================
@@ -164,6 +165,13 @@ const removeEmptyValues = (target) => {
   return isEmpty(target) ? null : target;
 };
 
+const replaceSubstring = (value, params = {}) => {
+  if (typeof value !== 'string' || !params.find) {
+    return value;
+  }
+  return value.split(params.find).join(params.replace ?? '');
+};
+
 // Map of canonical operation names to transformation functions
 const TRANSFORMATION_REGISTRY = {
   trim: trimWhitespace,
@@ -193,7 +201,9 @@ const TRANSFORMATION_REGISTRY = {
 
   removeempty: removeEmptyValues,
   removeemptyvalues: removeEmptyValues,
-  remove_empty_values: removeEmptyValues
+  remove_empty_values: removeEmptyValues,
+
+  replace: replaceSubstring
 };
 
 // =============================================================================
@@ -225,6 +235,7 @@ const normalizeConfig = (rawConfig = {}) => {
     rename: rawConfig.rename || {},
     select: rawConfig.select || null,
     types: rawConfig.types || rawConfig.cast || {},
+    steps: Array.isArray(rawConfig.steps) ? rawConfig.steps : null,
     options: {
       removeEmptyValues: Boolean(rawConfig.options?.removeEmptyValues),
       trimAllStrings: Boolean(rawConfig.options?.trimAllStrings),
@@ -295,7 +306,7 @@ const applyOperation = (value, operation) => {
     return value;
   }
 
-  if (opName.includes('number') || opName.includes('string') || opName.includes('date')) {
+  if (opName.includes('number') || opName.includes('string') || opName.includes('date') || opName === 'replace') {
     return fn(value, opParams);
   }
 
@@ -353,7 +364,28 @@ const transformRecord = (record, config = {}) => {
   // Step 4: Optional global empty-value cleanup
   let finalResult = parsedConfig.options.removeEmptyValues ? removeEmptyValues(result) : result;
 
-  // Step 5: Optional column selection (include/exclude), column renaming, and type conversion
+  // Step 5: Optional ordered steps or select/rename/types pipeline
+  if (Array.isArray(parsedConfig.steps)) {
+    finalResult = parsedConfig.steps.reduce((current, step) => {
+      if (!step || typeof step !== 'object') return current;
+      const action = String(step.action || step.type || '').toLowerCase();
+      if (action === 'select' || action === 'selectcolumns') {
+        return selectColumns(current, step.config || step);
+      }
+      if (action === 'rename' || action === 'renamecolumns') {
+        return renameColumns(current, step.map || step.rename || step.columns || {}, step.options);
+      }
+      if (action === 'converttypes' || action === 'cast' || action === 'types') {
+        return convertColumnTypes(current, step.types || step.columns || step.map || {}, step.options);
+      }
+      if (action === 'columns' || action === 'transform') {
+        return transformRecord(current, { columns: step.columns || {} });
+      }
+      return current;
+    }, finalResult);
+    return finalResult;
+  }
+
   if (parsedConfig.select) {
     finalResult = selectColumns(finalResult, parsedConfig.select);
   }
@@ -509,6 +541,7 @@ module.exports = {
   convertValue,
   convertColumnTypes,
   applyTransformations,
+  validateTransformationConfig,
 
   // Common registry and normalization
   TRANSFORMATION_REGISTRY,

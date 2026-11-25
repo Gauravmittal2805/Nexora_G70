@@ -13,6 +13,8 @@ const {
   normalizeConfig,
   generateTransformConfigFromMapping,
   applyMappingAndTransformations,
+  convertValue,
+  validateTransformationConfig,
 } = require('../utils/transformationEngine');
 
 /**
@@ -1357,13 +1359,68 @@ const deleteDataset = async (req, res, next) => {
 const getDatasetMapping = getFieldMapping;
 const saveDatasetMapping = saveFieldMapping;
 
+const isPlainObj = (val) =>
+  val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date);
+
+const hasConfiguredMapping = (mapping) => {
+  if (!isPlainObj(mapping)) return false;
+  return Boolean(
+    (Array.isArray(mapping.fieldMappings) && mapping.fieldMappings.length > 0) ||
+    mapping.target ||
+    mapping.id ||
+    (Array.isArray(mapping.numerical) && mapping.numerical.length > 0) ||
+    (Array.isArray(mapping.categorical) && mapping.categorical.length > 0) ||
+    (Array.isArray(mapping.datetime) && mapping.datetime.length > 0)
+  );
+};
+
+const extractTransformationConfig = (body = {}) => {
+  if (body.config !== undefined) {
+    return body.config;
+  }
+  const directKeys = ['select', 'rename', 'types', 'cast', 'columns', 'rules', 'transformations', 'steps', 'options'];
+  const extracted = {};
+  let hasAny = false;
+  for (const key of directKeys) {
+    if (body[key] !== undefined) {
+      extracted[key] = body[key];
+      hasAny = true;
+    }
+  }
+  return hasAny ? extracted : null;
+};
+
+const getDatasetAvailableColumns = (dataset, rows = []) => {
+  const cols = new Set();
+  const metaCols = dataset?.metadata?.columns || dataset?.columns || [];
+  if (Array.isArray(metaCols)) {
+    for (const col of metaCols) {
+      const name = typeof col === 'string' ? col : col?.name;
+      if (name) cols.add(name);
+    }
+  }
+  if (Array.isArray(rows) && rows.length > 0 && isPlainObj(rows[0])) {
+    for (const key of Object.keys(rows[0])) {
+      cols.add(key);
+    }
+  }
+  return Array.from(cols);
+};
+
 /**
- * @desc    Apply transformations to a dataset's preview rows using configuration or field mapping
+ * @desc    Apply transformations to a dataset's preview/sample rows using configuration or field mapping
  * @route   POST /api/datasets/:id/transform
  * @access  Public / Private
  */
 const transformDatasetRows = async (req, res, next) => {
   try {
+    if (!isPlainObj(req.body)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Request body must be a valid JSON object.'
+      });
+    }
+
     const dataset = await findDataset(req.params.id, req.user ? req.user._id : null);
 
     if (!dataset) {
@@ -1373,13 +1430,85 @@ const transformDatasetRows = async (req, res, next) => {
       });
     }
 
-    const { config, overrides, useMapping = true, rows: inputRows, projectToTarget = true } = req.body;
+    if (dataset.userId && req.user && String(dataset.userId) !== String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to transform this dataset.'
+      });
+    }
 
-    // Use input rows if provided, or preview rows from dataset
-    const rowsToTransform = inputRows || dataset.previewData || dataset.sampleRows || [];
+    const { overrides, useMapping, rows: inputRows, projectToTarget = true } = req.body;
+    const rawLimit = req.body.limit ?? req.body.sampleSize ?? req.query?.limit;
+    let sampleLimit = null;
 
+    if (rawLimit !== undefined && rawLimit !== null && rawLimit !== '') {
+      const parsedLimit = Number(rawLimit);
+      if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "'limit' / 'sampleSize' must be a positive integer."
+        });
+      }
+      sampleLimit = Math.min(parsedLimit, 500);
+    }
+
+    if (inputRows !== undefined) {
+      if (!Array.isArray(inputRows) || inputRows.some((r) => !isPlainObj(r))) {
+        return res.status(400).json({
+          success: false,
+          message: "'rows' must be an array of record objects."
+        });
+      }
+    }
+
+    let rowsToTransform = inputRows !== undefined
+      ? inputRows
+      : (dataset.previewData || dataset.sampleRows || []);
+
+    // Fallback to streaming sample rows from file storage if preview cache is empty
+    if (rowsToTransform.length === 0 && inputRows === undefined) {
+      const storageProvider = dataset.storage?.provider;
+      const storageBucket = dataset.storage?.bucket;
+      const storageKey = dataset.storage?.key;
+      const localPath = dataset.storage?.localPath;
+      if ((storageProvider === 'backblaze_b2' || localPath) && storageKey) {
+        try {
+          const fileStream = await getDatasetFileStream({
+            provider: storageProvider,
+            bucket: storageBucket,
+            key: storageKey,
+            localPath
+          });
+          if (fileStream) {
+            const streamResult = await readPreviewRowsFromStream({
+              stream: fileStream,
+              fileType: (dataset.fileType || 'csv').toLowerCase(),
+              page: 1,
+              limit: sampleLimit || 50,
+              delimiter: dataset.metadata?.delimiter || ','
+            });
+            if (Array.isArray(streamResult.rows) && streamResult.rows.length > 0) {
+              rowsToTransform = streamResult.rows;
+            }
+          }
+        } catch (streamErr) {
+          console.warn(`[Transform] Live stream fallback failed for "${dataset.datasetId}": ${streamErr.message}`);
+        }
+      }
+    }
+
+    if (sampleLimit !== null) {
+      rowsToTransform = rowsToTransform.slice(0, sampleLimit);
+    }
+
+    const explicitConfig = extractTransformationConfig(req.body);
+    const shouldUseMapping =
+      useMapping === true ||
+      (useMapping !== false && explicitConfig === null && hasConfiguredMapping(dataset.mapping));
+
+    // Mode A: Saved Field-Mapping Projection
     const fieldMappings = dataset.mapping?.fieldMappings;
-    if (useMapping && Array.isArray(fieldMappings) && fieldMappings.length > 0 && projectToTarget) {
+    if (shouldUseMapping && Array.isArray(fieldMappings) && fieldMappings.length > 0 && projectToTarget) {
       const transformedRows = rowsToTransform.map((record) => {
         const out = {};
         for (const m of fieldMappings) {
@@ -1396,6 +1525,8 @@ const transformDatasetRows = async (req, res, next) => {
             else if (trans === 'uppercase' && typeof val === 'string') val = String(val).toUpperCase();
             else if (trans === 'lowercase' && typeof val === 'string') val = String(val).toLowerCase();
             else if (trans === 'to_number') val = Number(val) || 0;
+            else if (trans === 'to_string' || trans === 'string') val = convertValue(val, 'String');
+            else if (trans === 'to_date' || trans === 'date') val = convertValue(val, 'Date', { asISOString: true });
             else if (trans === 'to_boolean') val = Boolean(val === true || val === 'true' || val === 1 || val === 'yes' || val === '1');
           }
           out[m.targetField] = val !== undefined ? val : null;
@@ -1414,19 +1545,43 @@ const transformDatasetRows = async (req, res, next) => {
     }
 
     let activeConfig;
-    if (useMapping && dataset.mapping) {
-      activeConfig = generateTransformConfigFromMapping(dataset.mapping, overrides || config || {});
+    if (shouldUseMapping && hasConfiguredMapping(dataset.mapping)) {
+      activeConfig = generateTransformConfigFromMapping(dataset.mapping, overrides || explicitConfig || {});
     } else {
-      activeConfig = config || {};
+      activeConfig = explicitConfig;
+      const availableColumns = getDatasetAvailableColumns(dataset, rowsToTransform);
+      const validation = validateTransformationConfig(activeConfig, availableColumns);
+
+      if (!validation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.message,
+          errors: validation.errors
+        });
+      }
     }
 
-    const transformedRows = transformDataset(rowsToTransform, activeConfig);
+    let transformedRows;
+    try {
+      transformedRows = transformDataset(rowsToTransform, activeConfig);
+    } catch (transformErr) {
+      return res.status(400).json({
+        success: false,
+        message: transformErr.message || 'Failed to apply transformation configuration.',
+        errors: [{ field: 'transform', code: 'TRANSFORMATION_EXECUTION_ERROR', message: transformErr.message }]
+      });
+    }
+
+    const outputColumns = transformedRows.length > 0 && isPlainObj(transformedRows[0])
+      ? Object.keys(transformedRows[0])
+      : [];
 
     return res.status(200).json({
       success: true,
       datasetId: dataset.datasetId || dataset.id,
       name: dataset.name || dataset.fileName,
       appliedConfig: activeConfig,
+      columns: outputColumns,
       count: transformedRows.length,
       rows: transformedRows
     });
@@ -1442,9 +1597,16 @@ const transformDatasetRows = async (req, res, next) => {
  */
 const transformRecordEndpoint = (req, res, next) => {
   try {
-    const { record, config, mapping, overrides } = req.body;
+    if (!isPlainObj(req.body)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Request body must be a valid JSON object.'
+      });
+    }
 
-    if (!record || typeof record !== 'object') {
+    const { record, mapping, overrides } = req.body;
+
+    if (!isPlainObj(record)) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid record object to transform.'
@@ -1454,12 +1616,36 @@ const transformRecordEndpoint = (req, res, next) => {
     let transformed;
     let appliedConfig;
 
-    if (mapping) {
-      appliedConfig = generateTransformConfigFromMapping(mapping, overrides || config || {});
-      transformed = applyMappingAndTransformations(record, mapping, overrides || config || {});
+    if (mapping !== undefined) {
+      if (!isPlainObj(mapping)) {
+        return res.status(400).json({
+          success: false,
+          message: "'mapping' must be a valid object."
+        });
+      }
+      const overrideConfig = overrides || extractTransformationConfig(req.body) || {};
+      appliedConfig = generateTransformConfigFromMapping(mapping, overrideConfig);
+      transformed = applyMappingAndTransformations(record, mapping, overrideConfig);
     } else {
-      appliedConfig = config || {};
-      transformed = transformRecord(record, appliedConfig);
+      appliedConfig = extractTransformationConfig(req.body);
+      const validation = validateTransformationConfig(appliedConfig, Object.keys(record));
+      if (!validation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.message,
+          errors: validation.errors
+        });
+      }
+
+      try {
+        transformed = transformRecord(record, appliedConfig);
+      } catch (transformErr) {
+        return res.status(400).json({
+          success: false,
+          message: transformErr.message || 'Failed to transform record.',
+          errors: [{ field: 'transform', code: 'TRANSFORMATION_EXECUTION_ERROR', message: transformErr.message }]
+        });
+      }
     }
 
     return res.status(200).json({
