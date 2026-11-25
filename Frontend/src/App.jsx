@@ -73,6 +73,7 @@ function App() {
             <Route path="datasets/upload" element={<DatasetUpload />} />
             <Route path="datasets/:id" element={<DatasetDetails />} />
             <Route path="datasets/:id/profile" element={<DatasetDetails />} />
+            <Route path="datasets/:id/preview" element={<DatasetDetails initialTab="preview" />} />
             <Route path="datasets/mapping" element={<FieldMapping />} />
             <Route path="datasets/:id/mapping" element={<FieldMapping />} />
             <Route path="datasets/transform" element={<TransformationConfig />} />

@@ -1,35 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import datasetService, { formatBytes } from '../services/datasetService';
 import DatasetPreviewTable from '../components/datasets/DatasetPreviewTable';
 import {
   ArrowLeft,
-  Database,
   Layers,
   FileSpreadsheet,
   HardDrive,
   Activity,
   Sparkles,
   CheckCircle2,
-  AlertTriangle,
   AlertCircle,
   RefreshCw,
   Search,
-  Filter,
   Download,
-  Calendar,
-  Tag,
-  Hash,
-  Type,
-  PieChart,
-  BarChart3,
-  Sliders,
   Check,
   ChevronRight,
   TrendingUp,
-  FileText,
   Clock,
-  ShieldCheck,
 } from 'lucide-react';
 
 const TYPE_BADGES = {
@@ -45,9 +33,15 @@ const TYPE_BADGES = {
   date: 'bg-pink-950/80 text-pink-300 border-pink-500/40',
 };
 
-const DatasetDetails = () => {
+const DatasetDetails = ({ initialTab = null }) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isPreviewPath =
+    initialTab === 'preview' ||
+    location.pathname.endsWith('/preview') ||
+    new URLSearchParams(location.search).get('tab') === 'preview';
 
   const [profileData, setProfileData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +49,41 @@ const DatasetDetails = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // View tabs
-  const [activeTab, setActiveTab] = useState('columns'); // 'columns' | 'preview' | 'summary'
+  const [activeTab, setActiveTab] = useState(isPreviewPath ? 'preview' : 'columns');
+
+  // Live Dataset Preview State (Connected to GET /api/datasets/:id/preview)
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewLimit, setPreviewLimit] = useState(10);
+
+  // Fetch live tabular records from backend preview API
+  const fetchPreview = useCallback(
+    async (page = 1, limit = 10) => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const result = await datasetService.getDatasetPreview(id, { page, limit });
+        setPreviewData(result);
+        setPreviewPage(page);
+        setPreviewLimit(limit);
+      } catch (err) {
+        console.error('Failed to load dataset preview records:', err);
+        setPreviewError(err.message || 'Failed to retrieve preview records from server.');
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    [id]
+  );
+
+  // Automatically fetch preview data when entering preview tab
+  useEffect(() => {
+    if (activeTab === 'preview' && !previewData && !previewLoading) {
+      fetchPreview(previewPage, previewLimit);
+    }
+  }, [activeTab, previewData, previewLoading, previewPage, previewLimit, fetchPreview]);
 
   // Column search & type filters
   const [columnSearch, setColumnSearch] = useState('');
@@ -512,7 +540,12 @@ const DatasetDetails = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('preview')}
+          onClick={() => {
+            setActiveTab('preview');
+            if (!previewData && !previewLoading) {
+              fetchPreview(1, previewLimit);
+            }
+          }}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'preview'
               ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]'
@@ -520,7 +553,7 @@ const DatasetDetails = () => {
           }`}
         >
           <FileSpreadsheet className="w-4 h-4" />
-          <span>Tabular Records Preview ({previewRows.length})</span>
+          <span>Tabular Records Preview {previewData?.totalRows ? `(${Number(previewData.totalRows).toLocaleString()})` : previewRows.length > 0 ? `(${previewRows.length})` : ''}</span>
         </button>
       </div>
 
@@ -697,19 +730,29 @@ const DatasetDetails = () => {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 2: TABULAR RECORDS PREVIEW */}
+      {/* TAB 2: TABULAR RECORDS PREVIEW (Connected to Backend Preview API) */}
       {/* ========================================================= */}
       {activeTab === 'preview' && (
         <DatasetPreviewTable
-          columns={columns}
-          rows={previewRows}
+          columns={
+            previewData?.columns && previewData.columns.length > 0
+              ? previewData.columns
+              : columns
+          }
+          rows={previewData?.rows || previewRows || []}
           title={`${name} — Raw Tabular Records`}
-          format={format}
-          totalRows={rowCount}
-          fileSizeBytes={fileSizeBytes}
+          format={previewData?.format || format}
+          totalRows={previewData?.totalRows || rowCount}
+          fileSizeBytes={previewData?.fileSizeBytes || fileSizeBytes}
+          isLoading={previewLoading}
+          error={previewError}
+          pagination={previewData?.pagination}
+          onPageChange={(p) => fetchPreview(p, previewLimit)}
+          onPageSizeChange={(l) => fetchPreview(1, l)}
+          onRetry={() => fetchPreview(previewPage, previewLimit)}
           showActions={true}
           onOpenMapping={() =>
-            navigate(`/dashboard/datasets/mapping?datasetId=${profileData.datasetId}`)
+            navigate(`/dashboard/datasets/mapping?datasetId=${profileData?.datasetId || id}`)
           }
         />
       )}

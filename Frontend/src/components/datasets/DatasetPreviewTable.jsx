@@ -596,17 +596,47 @@ const DatasetPreviewTable = ({
               <tr>
                 <td
                   colSpan={columns.length + 1}
-                  className="py-12 text-center text-slate-400 font-sans"
+                  className="py-16 text-center text-slate-400 font-sans"
                 >
-                  <p className="text-sm font-semibold text-slate-300">
-                    No records match search filter "{searchTerm}"
-                  </p>
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="mt-2 text-xs font-bold text-cyan-400 hover:underline cursor-pointer"
-                  >
-                    Clear Filter
-                  </button>
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-cyan-950/40 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mb-1 shadow-lg">
+                      <TableIcon className="w-6 h-6 text-slate-400" />
+                    </div>
+                    {searchTerm ? (
+                      <>
+                        <p className="text-sm font-semibold text-white">
+                          No records match search filter "{searchTerm}"
+                        </p>
+                        <p className="text-xs text-slate-400 max-w-sm">
+                          Try searching for a different value or clearing your active search filter.
+                        </p>
+                        <button
+                          onClick={() => setSearchTerm('')}
+                          className="mt-2 inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          <span>Clear Filter</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-white">
+                          No Preview Records Available
+                        </p>
+                        <p className="text-xs text-slate-400 max-w-sm">
+                          This dataset schema has {columns.length} columns, but no sample records were returned from the backend storage stream.
+                        </p>
+                        {onRetry && (
+                          <button
+                            onClick={onRetry}
+                            className="mt-2 inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-bold transition-all cursor-pointer border border-slate-700"
+                          >
+                            <RefreshCw className="w-3 h-3 mr-1" />
+                            <span>Reload Records</span>
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             )}
@@ -633,8 +663,8 @@ const DatasetPreviewTable = ({
           )}
         </div>
 
-        {/* Pagination Navigation Buttons */}
-        <div className="flex items-center space-x-1.5">
+        {/* Pagination & Next-Record Navigation Controls */}
+        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
           {/* First Page */}
           <button
             onClick={() => handleNavigatePage(1)}
@@ -645,14 +675,15 @@ const DatasetPreviewTable = ({
             <ChevronsLeft className="w-4 h-4" />
           </button>
 
-          {/* Previous Page */}
+          {/* Previous Page / Record */}
           <button
             onClick={() => handleNavigatePage(validCurrentPage - 1)}
             disabled={validCurrentPage <= 1}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            title="Previous Page"
+            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-300 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer font-semibold text-xs"
+            title="Previous Page / Records"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Prev</span>
           </button>
 
           {/* Page Numbers */}
@@ -686,14 +717,15 @@ const DatasetPreviewTable = ({
             })}
           </div>
 
-          {/* Next Page */}
+          {/* Next Page / Record */}
           <button
             onClick={() => handleNavigatePage(validCurrentPage + 1)}
             disabled={validCurrentPage >= totalPages}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            title="Next Page"
+            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-[#050814] text-slate-300 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer font-semibold text-xs"
+            title="Next Page / Records"
           >
-            <ChevronRight className="w-4 h-4" />
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
 
           {/* Last Page */}
